@@ -1,37 +1,42 @@
+from app.prompts.planner import PLANNER_SYSTEM_PROMPT
+from app.providers.llm.manager import llm_manager
+from app.providers.llm.output_parser import output_parser
+from app.schemas.planner import PlannerResponse
+
+
 class PlannerAgent:
 
-    def create_plan(self, query: str):
+    def create_plan(self, query: str) -> PlannerResponse:
 
-        query_lower = query.lower()
+        user_prompt = f"""
+Research Request:
 
-        if "compare" in query_lower:
-            tasks = [
-                "Research first topic",
-                "Research second topic",
-                "Compare both topics",
-                "Generate comparison report",
-            ]
+{query}
 
-        elif "explain" in query_lower:
-            tasks = [
-                "Research the topic",
-                "Understand the architecture",
-                "Analyze key concepts",
-                "Generate explanation report",
-            ]
+Generate a research execution plan.
+Return ONLY valid JSON.
+"""
 
-        else:
-            tasks = [
-                "Understand the topic",
-                "Collect information",
-                "Analyze findings",
-                "Generate report",
-            ]
+        response = llm_manager.generate(
+            system_prompt=PLANNER_SYSTEM_PROMPT,
+            prompt=user_prompt,
+        )
 
-        return {
-            "objective": query,
-            "tasks": tasks,
-        }
+        if not response.success:
+            raise Exception(response.error)
+
+        data = output_parser.parse_json(
+            response.content
+        )
+
+        if data is None:
+            raise Exception(
+                "Planner returned invalid JSON."
+            )
+
+        return PlannerResponse(
+            **data
+        )
 
 
 planner_agent = PlannerAgent()
