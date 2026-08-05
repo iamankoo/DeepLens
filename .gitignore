@@ -1,10 +1,11 @@
 # Python
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
 *.pyd
+*.log
 
-# Virtual Environments
+# Virtual Environment
 venv/
 .venv/
 env/
@@ -12,29 +13,30 @@ env/
 # Environment Variables
 .env
 
-# VS Code
+# IDE
 .vscode/
-
-# Ruff
-.ruff_cache/
-
-# Pytest
-.pytest_cache/
+.idea/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
-
-# Build
-dist/
-build/
-
-# Python packaging
-*.egg-info/
+# Pytest
+.pytest_cache/
 
 # Coverage
 .coverage
 htmlcov/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# LangGraph
+.langgraph_api/
+
+# SQLite
+*.db
+*.sqlite
+*.sqlite3

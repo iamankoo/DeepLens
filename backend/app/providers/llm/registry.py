@@ -1,6 +1,7 @@
 from app.providers.llm.gemini_provider import GeminiProvider
 from app.providers.llm.ollama_provider import OllamaProvider
 from app.providers.llm.groq_provider import GroqProvider
+from app.providers.llm.mistral_provider import MistralProvider
 
 
 class ProviderRegistry:
