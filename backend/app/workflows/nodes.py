@@ -5,23 +5,68 @@ from app.agents.writer_agent import writer_agent
 from app.agents.reflection_agent import reflection_agent
 
 from app.core.logger import logger
-
+from app.memory.manager import memory_manager
+from app.memory.memory_schema import MemoryRecord
 from app.schemas.writer import WriterRequest
 from app.schemas.reflection import ReflectionRequest
-
+from app.schemas.planner import PlannerRequest
 from app.workflows.state import ResearchState
 
+from datetime import datetime
+from uuid import uuid4
 
 def planner_node(state: ResearchState):
 
     logger.info("Planner Agent Started")
 
-    plan = planner_agent.create_plan(state["query"])
+    previous_research = ""
 
-    state["objective"] = plan.objective
-    state["tasks"] = plan.tasks
+    memory_results = state.get("memory_results")
+
+    if memory_results:
+
+        documents = memory_results.get("documents", [])
+
+        if documents and documents[0]:
+
+            previous_research = "\n\n".join(
+                documents[0]
+            )
+
+    request = PlannerRequest(
+        query=state["query"],
+        previous_research=previous_research,
+    )
+
+    response = planner_agent.create_plan(
+        request
+    )
+
+    state["objective"] = response.objective
+    state["tasks"] = response.tasks
 
     logger.info("Planner Agent Completed")
+
+    return state
+
+def memory_search_node(state: ResearchState):
+
+    logger.info("Memory Search Started")
+
+    if not state.get("memory_enabled", True):
+
+        logger.info("Memory Disabled")
+
+        return state
+
+    results = memory_manager.retrieve(
+        query=state["query"],
+        top_k=3,
+    )
+
+    state["memory_results"] = results
+
+    logger.info("Memory Search Completed")
 
     return state
 
@@ -83,6 +128,21 @@ def writer_node(state: ResearchState):
 
     state["report"] = response.report
 
+    # -----------------------------
+    # Store report in memory
+    # -----------------------------
+    memory_manager.store(
+        MemoryRecord(
+            id=str(uuid4()),
+            query=state["query"],
+            objective=state["objective"],
+            report=state["report"],
+            created_at=datetime.now(),
+        )
+    )
+
+    logger.info("Research stored in memory")
+
     logger.info("Writer Agent Completed")
 
     return state
@@ -127,3 +187,22 @@ def should_continue(state: ResearchState):
     logger.info("Reflection requested another research iteration")
 
     return "research_more"
+
+def memory_search_node(state: ResearchState):
+
+    logger.info("Memory Search Started")
+
+    if not state.get("memory_enabled", True):
+        logger.info("Memory disabled.")
+        return state
+
+    results = memory_manager.retrieve(
+        query=state["query"],
+        top_k=3,
+    )
+
+    state["memory_results"] = results
+
+    logger.info("Memory Search Completed")
+
+    return state

@@ -10,7 +10,9 @@ initial_state = {
     "search_queries": [],
     "search_results": [],
     "ranked_sources": [],
+    "memory_results": [],
 
+    "memory_enabled": True,
     "report": "",
 
     "reflection": None,

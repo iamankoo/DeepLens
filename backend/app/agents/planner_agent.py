@@ -1,19 +1,30 @@
 from app.prompts.planner import PLANNER_SYSTEM_PROMPT
 from app.providers.llm.manager import llm_manager
 from app.providers.llm.output_parser import output_parser
-from app.schemas.planner import PlannerResponse
+from app.schemas.planner import (
+    PlannerRequest,
+    PlannerResponse,
+)
 
 
 class PlannerAgent:
 
-    def create_plan(self, query: str) -> PlannerResponse:
+    def create_plan(
+        self,
+        request: PlannerRequest,
+    ) -> PlannerResponse:
 
         user_prompt = f"""
 Research Request:
 
-{query}
+{request.query}
 
-Generate a research execution plan.
+Relevant Previous Research:
+
+{request.previous_research}
+
+Generate a detailed research execution plan.
+
 Return ONLY valid JSON.
 """
 
@@ -34,9 +45,7 @@ Return ONLY valid JSON.
                 "Planner returned invalid JSON."
             )
 
-        return PlannerResponse(
-            **data
-        )
+        return PlannerResponse(**data)
 
 
 planner_agent = PlannerAgent()

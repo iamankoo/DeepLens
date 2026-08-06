@@ -2,6 +2,7 @@ from langgraph.graph import END, StateGraph
 
 from app.workflows.nodes import (
     planner_node,
+    memory_search_node,
     search_node,
     ranking_node,
     writer_node,
@@ -22,6 +23,7 @@ workflow.add_node("search", search_node)
 workflow.add_node("ranking", ranking_node)
 workflow.add_node("writer", writer_node)
 workflow.add_node("reflection", reflection_node)
+workflow.add_node("memory_search", memory_search_node)
 
 # -----------------------------
 # Entry Point
@@ -33,7 +35,8 @@ workflow.set_entry_point("planner")
 # Normal Flow
 # -----------------------------
 
-workflow.add_edge("planner", "search")
+workflow.add_edge("planner", "memory_search")
+workflow.add_edge("memory_search", "search")
 workflow.add_edge("search", "ranking")
 workflow.add_edge("ranking", "writer")
 workflow.add_edge("writer", "reflection")

@@ -22,3 +22,11 @@ class ResearchState(TypedDict):
     iteration: int
 
     max_iterations: int
+
+    memory_results: list = []
+
+    memory_enabled: bool = True
+
+    memory_results: list
+
+    memory_enabled: bool
