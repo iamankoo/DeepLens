@@ -16,9 +16,11 @@
   - `queue/` — `connection.py` (Redis connection + RQ `research_queue`, both built from `Settings`)
   - `jobs/` — `research_job.py`, the function the RQ worker actually executes
   - `worker.py` — the RQ worker entry point (`python -m app.worker`); picks `SimpleWorker` on Windows automatically, see Known Gotchas below
+  - `core/security.py` — password hashing (bcrypt), JWT access tokens, opaque (hashed-at-rest) refresh tokens
+  - `api/v1/deps.py` — `get_current_user`, `get_current_user_optional`, `require_role(*roles)` — the auth/RBAC dependencies every protected or attribution-aware endpoint uses
   - `backend/tests/` — current, maintained pytest suite; `backend/old_tests/` — **deprecated, do not extend**
 - **Entry points**:
-  - API: `backend/app/main.py` (FastAPI app, mounts `api_router` under `/api/v1`), run via `uvicorn app.main:app --reload` from `backend/`. `POST /api/v1/research` enqueues a job and returns `202` immediately with the run's id/status; poll `GET /api/v1/research/{id}` for progress and the final report, or `GET /api/v1/research` for history.
+  - API: `backend/app/main.py` (FastAPI app, mounts `api_router` under `/api/v1`), run via `uvicorn app.main:app --reload` from `backend/`. `POST /api/v1/research` enqueues a job and returns `202` immediately with the run's id/status; poll `GET /api/v1/research/{id}` for progress and the final report, or `GET /api/v1/research` for history. Auth is optional on this endpoint (see Authentication below) — an authenticated request attaches `user_id`, an anonymous one still works.
   - Worker: `python -m app.worker` from `backend/` — must be running for queued research to ever execute; the API alone will accept requests but they'll sit at `pending` forever without a worker.
   - Workflow: `research_workflow.py`'s compiled graph, entry node `"planner"`, invoked by `app/jobs/research_job.py` inside the worker process.
 
@@ -35,6 +37,14 @@
 - **Always start the worker via `python -m app.worker`**, never `rq worker research` directly — the bare CLI defaults to `redis://localhost:6379`, which on this machine is a *different project's* Redis container, so jobs get enqueued into one Redis and the worker listens on another and nothing ever runs, silently. `app/worker.py` builds its connection from `Settings.REDIS_URL` so this can't happen.
 - **On Windows, the worker must be `rq.worker.SimpleWorker`**, not the default `Worker` — the default forks a child process per job via `os.fork()`, which doesn't exist on Windows; jobs get accepted into the queue but never dequeued, with no error. `app/worker.py` already branches on `sys.platform` for this; don't hardcode `Worker` in new code that spawns workers.
 - Job lifecycle: `research_service.create_research` creates a `ResearchRun` row (`status=pending`) and enqueues `app.jobs.research_job.run_research_job(research_id, query)` in the same call, then returns immediately. The job function transitions the row through `running` → `completed`/`failed`, persisting `report`/`quality_score`/`iteration` or `error`.
+
+## Authentication
+
+- JWT access tokens (30 min default, `Settings.ACCESS_TOKEN_EXPIRE_MINUTES`) + opaque refresh tokens (7 day default, `Settings.REFRESH_TOKEN_EXPIRE_DAYS`). Refresh tokens are random (`secrets.token_urlsafe`), not JWTs — only their SHA-256 hash is stored (`refresh_tokens` table), so a leaked DB row can't be replayed as a bearer credential, and they support real server-side revocation (JWTs alone don't, short of a blocklist).
+- Refresh rotation: every `POST /api/v1/auth/refresh` call revokes the token it was given and issues a new pair. A refresh token is single-use — reusing one after it's been redeemed returns `401`. This is deliberate (limits the blast radius of a leaked refresh token), not a bug.
+- Endpoints: `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`. Passwords are bcrypt-hashed via `run_in_threadpool` (hashing is CPU-bound, ~100-300ms — don't call `hash_password`/`verify_password` directly from an `async def` endpoint without that wrapper, it'll block the event loop).
+- RBAC: `UserRole` (`user`/`admin`) on the `User` model; `require_role(*roles)` in `api/v1/deps.py` is the dependency factory for role-gated endpoints. No endpoint uses it yet — there's no admin-only functionality built (that's Phase 6, the admin dashboard); it exists now as infrastructure ready for that.
+- `POST /api/v1/research` uses `get_current_user_optional`, not `get_current_user` — research creation is **not** gated behind login. An authenticated request attaches `user_id` to the `ResearchRun` for history/ownership; an anonymous request still works exactly as before. Whether research should require an account is a product decision, not made here — flip that one dependency if/when that's decided, everything else (the `user_id` column, the attribution logic) is already in place either way.
 
 ## Development Standards
 
@@ -56,10 +66,10 @@
 
 ## Security Rules
 
-- Never expose `TAVILY_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY` — these are required (no defaults for Tavily/Gemini) and must only load via `Settings`/`.env`.
+- Never expose `TAVILY_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `SECRET_KEY` — these are required (no defaults for Tavily/Gemini/SECRET_KEY) and must only load via `Settings`/`.env`.
 - Never commit `backend/.env` (only `.env.example` is tracked).
 - Validate/sanitize search-derived content before it flows into the writer/citation pipeline (untrusted web content).
-- No authentication exists yet (planned: JWT + refresh tokens + RBAC) — every endpoint is currently unauthenticated. Don't assume request-level identity/authorization is enforced anywhere until that phase lands.
+- Auth exists now (see Authentication above) but is opt-in on `/research` — most endpoints are still effectively open. Don't assume request-level authorization is enforced anywhere it isn't explicitly wired via `get_current_user`/`require_role`.
 
 ## Performance Rules
 
@@ -105,6 +115,7 @@
   - `python -m app.worker` (RQ worker — required for queued research to actually run; see Task Queue above for why the bare `rq worker` CLI doesn't work here)
   - `pytest` or `pytest tests/`
   - `ruff check .`; `black .` (no committed ruff/black config found — defaults are in use; a `.ruff_cache/` exists confirming ruff has been run)
-- **Env vars** actually consumed by `Settings`: `APP_NAME`, `APP_VERSION`, `DEBUG`, `TAVILY_API_KEY` (required), `GROQ_API_KEY`/`GROQ_MODEL`, `GEMINI_API_KEY` (required)/`GEMINI_MODEL`, `MISTRAL_API_KEY`/`MISTRAL_MODEL`, `OLLAMA_BASE_URL`/`OLLAMA_MODEL`, `DATABASE_URL`/`DB_ECHO`/`DB_POOL_SIZE`/`DB_MAX_OVERFLOW`, `REDIS_URL`/`RESEARCH_QUEUE_NAME`. `SECRET_KEY` is in `.env.example` but not yet read by code (planned for the auth phase).
-- **Key dependencies to respect**: `langgraph` (orchestration core), `tavily-python` (only configured search backend today), `chromadb` (long-term memory), `sqlalchemy`/`alembic` (MySQL persistence), `rq`/`redis` (job queue), the multi-provider LLM abstraction.
+- **Env vars** actually consumed by `Settings`: `APP_NAME`, `APP_VERSION`, `DEBUG`, `TAVILY_API_KEY` (required), `GROQ_API_KEY`/`GROQ_MODEL`, `GEMINI_API_KEY` (required)/`GEMINI_MODEL`, `MISTRAL_API_KEY`/`MISTRAL_MODEL`, `OLLAMA_BASE_URL`/`OLLAMA_MODEL`, `DATABASE_URL`/`DB_ECHO`/`DB_POOL_SIZE`/`DB_MAX_OVERFLOW`, `REDIS_URL`/`RESEARCH_QUEUE_NAME`, `SECRET_KEY` (required, no default — every environment sets its own JWT signing key)/`JWT_ALGORITHM`/`ACCESS_TOKEN_EXPIRE_MINUTES`/`REFRESH_TOKEN_EXPIRE_DAYS`.
+- **`.env`/`.env.example` policy**: both are kept synchronized and grouped by category (Application/Search/LLM Providers/Database/Redis/Security/...) whenever a variable is added, changed, or removed — `.env` holds real local values, `.env.example` holds the same names with placeholders only. Never hardcode a secret in source; add it to `Settings` and both env files instead.
+- **Key dependencies to respect**: `langgraph` (orchestration core), `tavily-python` (only configured search backend today), `chromadb` (long-term memory), `sqlalchemy`/`alembic` (MySQL persistence), `rq`/`redis` (job queue), `pyjwt`/`bcrypt` (auth), the multi-provider LLM abstraction.
 - No CI is configured yet (`.github/` is empty) — don't assume automated checks catch regressions; run `pytest`/`ruff` locally.

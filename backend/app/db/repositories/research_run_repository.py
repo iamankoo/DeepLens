@@ -18,8 +18,10 @@ class ResearchRunRepository:
     async def get(self, db: AsyncSession, *, research_id: str) -> ResearchRun | None:
         return await db.get(ResearchRun, research_id)
 
-    def create(self, db: Session, *, research_id: str, query: str) -> ResearchRun:
-        run = ResearchRun(id=research_id, query=query, status=ResearchStatus.PENDING)
+    def create(
+        self, db: Session, *, research_id: str, query: str, user_id: int | None = None
+    ) -> ResearchRun:
+        run = ResearchRun(id=research_id, query=query, status=ResearchStatus.PENDING, user_id=user_id)
         db.add(run)
         db.commit()
         db.refresh(run)

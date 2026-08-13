@@ -10,12 +10,14 @@ from app.utils.id_generator import generate_research_id
 
 class ResearchService:
 
-    def create_research(self, request: ResearchRequest) -> ResearchRun:
+    def create_research(self, request: ResearchRequest, *, user_id: int | None = None) -> ResearchRun:
 
         research_id = generate_research_id()
 
         with db_manager.sync_session_factory() as db:
-            run = research_run_repository.create(db, research_id=research_id, query=request.query)
+            run = research_run_repository.create(
+                db, research_id=research_id, query=request.query, user_id=user_id
+            )
 
         research_queue.enqueue(run_research_job, research_id, request.query, job_id=research_id)
 

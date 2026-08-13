@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.deps import get_current_user_optional
+from app.db.models.user import User
 from app.db.repositories.research_run_repository import research_run_repository
 from app.db.session import get_db
 from app.schemas.research import ResearchRequest
@@ -11,9 +13,9 @@ router = APIRouter()
 
 
 @router.post("/research", response_model=ResearchRunSummary, status_code=status.HTTP_202_ACCEPTED)
-def create_research(request: ResearchRequest):
+def create_research(request: ResearchRequest, current_user: User | None = Depends(get_current_user_optional)):
 
-    return research_service.create_research(request)
+    return research_service.create_research(request, user_id=current_user.id if current_user else None)
 
 
 @router.get("/research", response_model=list[ResearchRunSummary])
