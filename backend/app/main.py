@@ -2,6 +2,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.exceptions import DeepLensError, LLMProviderError, OutputParsingError
 from app.core.logger import logger
+from app.db.session import db_manager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -11,6 +12,11 @@ app = FastAPI(
 )
 
 app.include_router(api_router, prefix="/api/v1")
+
+
+@app.on_event("shutdown")
+async def shutdown_db():
+    await db_manager.dispose()
 
 
 @app.exception_handler(LLMProviderError)

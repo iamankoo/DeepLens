@@ -21,10 +21,22 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5:7b"
 
+    DATABASE_URL: str = "mysql+aiomysql://root:password@localhost:3307/deeplens"
+    DB_ECHO: bool = False
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 10
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,
     )
+
+    @property
+    def SYNC_DATABASE_URL(self) -> str:
+        """The app runs on the async `aiomysql` driver; Alembic and the
+        still-synchronous research pipeline (until Phase 2's task queue
+        lands) use this `pymysql`-backed equivalent instead."""
+        return self.DATABASE_URL.replace("+aiomysql", "+pymysql")
 
 
 settings = Settings()
