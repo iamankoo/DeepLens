@@ -1,9 +1,13 @@
 from app.citations.schemas import Citation, CitationList
+from app.search.schemas import SearchResult
 
 
 class CitationExtractor:
 
-    def extract(self, search_results) -> CitationList:
+    def extract(
+        self,
+        search_results: list[SearchResult],
+    ) -> CitationList:
 
         citations = []
 
@@ -11,15 +15,20 @@ class CitationExtractor:
 
             citations.append(
                 Citation(
-                    title=result.get("title", ""),
-                    url=result.get("url", ""),
-                    source=result.get("source", ""),
-                    author=result.get("author"),
-                    published_date=result.get("published_date"),
+                    title=result.title,
+                    url=result.url,
+                    source=result.source,
+                    domain=result.domain,
+                    author=result.author,
+                    publisher=result.source,
+                    published_date=result.published_date,
+                    credibility_score=result.credibility_score,
                 )
             )
 
-        return CitationList(citations=citations)
+        return CitationList(
+            citations=citations
+        )
 
 
 citation_extractor = CitationExtractor()

@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from app.search.schemas import SearchResult
+
 
 class WriterRequest(BaseModel):
 
@@ -7,7 +9,9 @@ class WriterRequest(BaseModel):
 
     tasks: list[str]
 
-    sources: list[dict]
+    sources: list[SearchResult]
+
+    context: str = ""
 
 
 class WriterResponse(BaseModel):

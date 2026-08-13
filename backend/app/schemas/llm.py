@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LLMResponse(BaseModel):
@@ -18,3 +18,5 @@ class LLMResponse(BaseModel):
     total_tokens: int | None = None
 
     error: str | None = None
+
+    metadata: dict = Field(default_factory=dict)

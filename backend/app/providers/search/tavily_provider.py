@@ -14,7 +14,7 @@ class TavilyProvider(BaseSearchProvider):
         response = self.client.search(
             query=query,
             search_depth="basic",
-            max_results=5,
+            max_results=3,
         )
 
         results = []

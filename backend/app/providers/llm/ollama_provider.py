@@ -51,6 +51,10 @@ class OllamaProvider(BaseLLMProvider, BaseProvider):
         try:
             start = self.start_timer()
 
+            print(f"[Ollama] Model: {settings.OLLAMA_MODEL}")
+            print(f"[Ollama] Prompt length: {len(prompt)}")
+            print("[Ollama] Sending request...")
+
             response = self.client.chat(
                 model=settings.OLLAMA_MODEL,
                 messages=messages,

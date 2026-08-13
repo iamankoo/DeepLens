@@ -1,4 +1,7 @@
 from typing import TypedDict
+from app.search.schemas import SearchResult
+from app.search.chunk import SearchChunk
+from app.intelligence.quality_schema import QualityReport
 
 
 class ResearchState(TypedDict):
@@ -11,11 +14,17 @@ class ResearchState(TypedDict):
 
     search_queries: list[str]
 
-    search_results: list[dict]
+    search_results: list[SearchResult]
 
-    ranked_sources: list[dict]
+    ranked_sources: list[SearchResult]
+
+    chunk_pool: list[SearchChunk]
+
+    context: str
 
     report: str
+
+    quality_report: QualityReport | None
 
     reflection: dict | None
 
@@ -23,10 +32,6 @@ class ResearchState(TypedDict):
 
     max_iterations: int
 
-    memory_results: list = []
-
-    memory_enabled: bool = True
-
     memory_results: list
 
-    memory_enabled: bool
+    memory_enabled: bool
