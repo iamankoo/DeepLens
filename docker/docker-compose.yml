@@ -15,5 +15,21 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    # Host port 6380, not the default 6379: another project's redis
+    # container on this machine already owns 6379.
+    ports:
+      - "6380:6379"
+    volumes:
+      - deeplens_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   deeplens_mysql_data:
+  deeplens_redis_data:

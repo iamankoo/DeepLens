@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
 
+    REDIS_URL: str = "redis://localhost:6380/0"
+    RESEARCH_QUEUE_NAME: str = "research"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,
@@ -34,8 +37,9 @@ class Settings(BaseSettings):
     @property
     def SYNC_DATABASE_URL(self) -> str:
         """The app runs on the async `aiomysql` driver; Alembic and the
-        still-synchronous research pipeline (until Phase 2's task queue
-        lands) use this `pymysql`-backed equivalent instead."""
+        research pipeline worker (agents/workflows/nodes.py — synchronous
+        code, just now run in an RQ worker process instead of on the
+        request thread) use this `pymysql`-backed equivalent instead."""
         return self.DATABASE_URL.replace("+aiomysql", "+pymysql")
 
 

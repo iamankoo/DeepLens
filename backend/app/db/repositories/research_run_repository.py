@@ -19,8 +19,17 @@ class ResearchRunRepository:
         return await db.get(ResearchRun, research_id)
 
     def create(self, db: Session, *, research_id: str, query: str) -> ResearchRun:
-        run = ResearchRun(id=research_id, query=query, status=ResearchStatus.RUNNING)
+        run = ResearchRun(id=research_id, query=query, status=ResearchStatus.PENDING)
         db.add(run)
+        db.commit()
+        db.refresh(run)
+        return run
+
+    def mark_running(self, db: Session, *, research_id: str) -> ResearchRun | None:
+        run = db.get(ResearchRun, research_id)
+        if run is None:
+            return None
+        run.status = ResearchStatus.RUNNING
         db.commit()
         db.refresh(run)
         return run

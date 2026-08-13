@@ -1,17 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.repositories.research_run_repository import research_run_repository
 from app.db.session import get_db
 from app.schemas.research import ResearchRequest
-from app.schemas.research_response import ResearchResponse
 from app.schemas.research_run import ResearchRunDetail, ResearchRunSummary
 from app.services.research_service import research_service
 
 router = APIRouter()
 
 
-@router.post("/research", response_model=ResearchResponse)
+@router.post("/research", response_model=ResearchRunSummary, status_code=status.HTTP_202_ACCEPTED)
 def create_research(request: ResearchRequest):
 
     return research_service.create_research(request)
