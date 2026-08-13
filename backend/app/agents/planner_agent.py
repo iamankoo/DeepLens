@@ -5,6 +5,7 @@ from app.schemas.planner import (
     PlannerRequest,
     PlannerResponse,
 )
+from app.core.exceptions import LLMProviderError, OutputParsingError
 
 
 class PlannerAgent:
@@ -34,14 +35,14 @@ Return ONLY valid JSON.
         )
 
         if not response.success:
-            raise Exception(response.error)
+            raise LLMProviderError(response.error)
 
         data = output_parser.parse_json(
             response.content
         )
 
         if data is None:
-            raise Exception(
+            raise OutputParsingError(
                 "Planner returned invalid JSON."
             )
 

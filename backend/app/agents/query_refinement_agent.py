@@ -5,6 +5,7 @@ from app.schemas.query_refinement import (
     QueryRefinementRequest,
     QueryRefinementResponse,
 )
+from app.core.exceptions import LLMProviderError, OutputParsingError
 
 
 class QueryRefinementAgent:
@@ -38,14 +39,14 @@ Return ONLY JSON.
         )
 
         if not response.success:
-            raise Exception(response.error)
+            raise LLMProviderError(response.error)
 
         data = output_parser.parse_json(
             response.content
         )
 
         if data is None:
-            raise Exception(
+            raise OutputParsingError(
                 "Query Refinement returned invalid JSON."
             )
 

@@ -1,30 +1,18 @@
 from pydantic import BaseModel
 
-
-class SearchResult(BaseModel):
-    title: str
-    url: str
-    snippet: str
-
-
-class Report(BaseModel):
-    title: str
-    executive_summary: str
-    objectives: list[str]
-    tasks: list[str]
-    sources: list[SearchResult]
+from app.search.schemas import SearchResult
 
 
 class ResearchPlan(BaseModel):
     query: str
     objective: str
     tasks: list[str]
-
     search_queries: list[str]
-    search_results: list[SearchResult]
     ranked_sources: list[SearchResult]
-
-    report: Report
+    report: str
+    iteration: int
+    quality_score: float | None = None
+    approved: bool | None = None
 
 
 class ResearchResponse(BaseModel):

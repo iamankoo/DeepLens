@@ -1,6 +1,9 @@
 from app.prompts.writer import WRITER_SYSTEM_PROMPT
 from app.providers.llm.manager import llm_manager
 from app.schemas.writer import WriterRequest, WriterResponse
+from app.citations.extractor import citation_extractor
+from app.citations.reference_manager import reference_manager
+from app.core.exceptions import LLMProviderError
 
 
 class WriterAgent:
@@ -10,28 +13,38 @@ class WriterAgent:
         request: WriterRequest,
     ) -> WriterResponse:
 
-        sources_text = ""
+        context_text = request.context
 
-        for index, source in enumerate(request.sources, start=1):
-
-            title = source.get("title", "Unknown Title")
-            url = source.get("url", "")
-            content = source.get("content", "")
-
-            sources_text += f"""
+        if not context_text:
+            sources_text = ""
+            for index, source in enumerate(request.sources, start=1):
+                sources_text += f"""
 Source {index}
 
 Title:
-{title}
+{source.title}
+
+Source:
+{source.source}
 
 URL:
-{url}
+{source.url}
+
+Credibility Score:
+{source.credibility_score}
 
 Content:
-{content}
+{source.snippet}
 
 ------------------------------------
 """
+            context_text = sources_text
+
+        # Cap context to avoid excessive LLM latency (12k chars ~3k tokens)
+        MAX_CONTEXT_CHARS = 12_000
+        if len(context_text) > MAX_CONTEXT_CHARS:
+            print(f"  [WriterAgent] Capping context from {len(context_text)} to {MAX_CONTEXT_CHARS} chars")
+            context_text = context_text[:MAX_CONTEXT_CHARS] + "\n\n[Context truncated for brevity]"
 
         user_prompt = f"""
 Research Objective:
@@ -42,23 +55,49 @@ Research Tasks:
 
 {request.tasks}
 
-Research Sources:
+Research Context (structured evidence grouped by task):
 
-{sources_text}
+{context_text}
 
-Write a professional research report.
+Instructions:
+
+1. Use the provided context as evidence.
+2. Organize the report with clear headings.
+3. Write professionally and objectively.
+4. Do not invent facts.
+5. Reference the sources naturally where appropriate.
+6. Do NOT generate a References section.
+
+Write a comprehensive research report.
 """
+
+        import time as _time
+        print(f"  [WriterAgent] Sending {len(user_prompt)} char prompt to LLM...")
+        _t0 = _time.perf_counter()
 
         response = llm_manager.generate(
             system_prompt=WRITER_SYSTEM_PROMPT,
             prompt=user_prompt,
         )
 
+        print(f"  [WriterAgent] LLM responded in {_time.perf_counter()-_t0:.2f}s")
+
         if not response.success:
-            raise Exception(response.error)
+            raise LLMProviderError(response.error)
+
+        citations = citation_extractor.extract(
+            request.sources
+        )
+
+        references = reference_manager.generate(
+            citations.citations,
+            style="APA",
+        )
+
+        final_report = f"{response.content}\n\n---\n\n# References\n\n{references}"
 
         return WriterResponse(
-            report=response.content
+            report=final_report
         )
 
 
