@@ -22,5 +22,17 @@ class UserRepository:
         await db.refresh(user)
         return user
 
+    async def update_password(self, db: AsyncSession, *, user: User, hashed_password: str) -> User:
+        user.hashed_password = hashed_password
+        await db.commit()
+        await db.refresh(user)
+        return user
+
+    async def mark_email_verified(self, db: AsyncSession, *, user: User) -> User:
+        user.email_verified = True
+        await db.commit()
+        await db.refresh(user)
+        return user
+
 
 user_repository = UserRepository()

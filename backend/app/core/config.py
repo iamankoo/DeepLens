@@ -41,6 +41,24 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
+
+    # ---- Email ----
+    # SMTP_HOST empty = no real SMTP configured; EmailSender (core/email.py)
+    # falls back to logging the message (including reset/verify links)
+    # instead of failing, so auth flows are fully usable in dev without
+    # real credentials only the deployer can obtain.
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = "noreply@deeplens.local"
+    SMTP_USE_TLS: bool = True
+
+    # ---- Frontend ----
+    # Used to build links (password reset, email verification) sent by email.
+    FRONTEND_URL: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(
         env_file=".env",

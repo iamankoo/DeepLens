@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.refresh_token import RefreshToken
@@ -30,6 +30,16 @@ class RefreshTokenRepository:
 
     async def revoke(self, db: AsyncSession, *, token: RefreshToken) -> None:
         token.revoked_at = datetime.now(timezone.utc)
+        await db.commit()
+
+    async def revoke_all_for_user(self, db: AsyncSession, *, user_id: int) -> None:
+        """Used on password reset: invalidates every other session so a
+        stolen password can't be paired with a still-valid refresh token."""
+        await db.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(timezone.utc))
+        )
         await db.commit()
 
 
