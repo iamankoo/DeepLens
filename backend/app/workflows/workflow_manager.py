@@ -37,8 +37,8 @@ class WorkflowManager:
             # stream_mode=["updates", "values"] gives both which node just
             # ran (for on_step progress reporting) and the fully-merged
             # state after each step (so the final "values" chunk is exactly
-            # what graph.invoke() would have returned) — see CLAUDE.md for
-            # why this replaced a plain invoke() call.
+            # what graph.invoke() would have returned) — this is why a
+            # plain invoke() call was replaced with streaming.
             final_state: dict | None = None
             for mode, chunk in research_graph.stream(initial_state, stream_mode=["updates", "values"]):
                 if mode == "values":

@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 
 // recharts is a sizable dependency (~110KB) that only this card on this page
 // needs — keeping it out of /dashboard's initial JS the same way mermaid and
-// katex are already kept out of /research/[id]'s (see CLAUDE.md).
+// katex are already kept out of /research/[id]'s.
 const StatusChart = dynamic(() => import("@/components/dashboard/status-chart").then((m) => m.StatusChart), {
   ssr: false,
   loading: () => <Skeleton className="h-full w-full" />,

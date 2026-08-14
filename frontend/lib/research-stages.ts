@@ -21,7 +21,7 @@ export interface StageMeta {
 
 // Mirrors backend/app/workflows/research_workflow.py's node order exactly —
 // `current_step` on a ResearchRun is the raw LangGraph node name, reported
-// live via WorkflowManager's on_step callback (see backend CLAUDE.md notes).
+// live via WorkflowManager's on_step callback.
 // This is the only place that order/labels are defined for the UI.
 export const RESEARCH_STAGES: StageMeta[] = [
   { key: "planner", label: "Planning research", icon: Brain },

@@ -15,7 +15,7 @@ def handle_research_job_failure(job, connection, *exc_info) -> None:
     'running' forever. RQ's own maintenance detects this on the next
     worker startup (AbandonedJobError, via StartedJobRegistry.cleanup())
     and invokes this callback regardless of which worker process
-    performed the detection — see CLAUDE.md for the full trace.
+    performed the detection.
 
     Guarded by current status so this never overwrites a specific error
     already recorded by run_research_job's own except block for a normal
@@ -41,9 +41,9 @@ def handle_research_job_failure(job, connection, *exc_info) -> None:
 
 
 def run_research_job(research_id: str, query: str) -> str:
-    """Entry point executed by the RQ worker process (see `rq worker`
-    in README/CLAUDE.md) — runs the full synchronous research pipeline
-    off the API request thread and persists the outcome."""
+    """Entry point executed by the RQ worker process — runs the full
+    synchronous research pipeline off the API request thread and
+    persists the outcome."""
 
     with db_manager.sync_session_factory() as db:
         research_run_repository.mark_running(db, research_id=research_id)
