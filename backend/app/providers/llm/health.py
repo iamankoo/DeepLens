@@ -238,20 +238,14 @@ class ProviderHealthTracker:
         self._write_all(all_health)
 
     def ordered_candidates(self, provider_names: list[str]) -> list[str]:
-        """Available providers only, prioritized by recent success rate then
-        latency — an untested provider (success_rate defaults to 1.0) is
-        tried before a provider with a track record of failures, but doesn't
-        jump ahead of one with an actual proven-fast success streak."""
+        """Available providers only, in the exact order given by
+        `provider_names` — the caller's order (see inference_engine.py's
+        `DEFAULT_PROVIDER_ORDER`) is a mandatory fallback priority, not a
+        suggestion, so this only filters out providers currently in
+        cooldown; it never reprioritizes by success rate or latency."""
 
         all_health = self._read_all()
-        available = [name for name in provider_names if all_health.get(name) is None or all_health[name].is_available()]
-        return sorted(
-            available,
-            key=lambda name: (
-                -(all_health[name].success_rate if name in all_health else 1.0),
-                all_health[name].average_latency_ms if name in all_health else 0.0,
-            ),
-        )
+        return [name for name in provider_names if all_health.get(name) is None or all_health[name].is_available()]
 
     def describe(self, provider_names: list[str]) -> list[dict]:
         """Per-provider diagnostic info for every name given, including ones

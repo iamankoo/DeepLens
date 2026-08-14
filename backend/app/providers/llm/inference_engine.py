@@ -8,7 +8,10 @@ from app.schemas.llm import LLMResponse
 
 ALL_PROVIDERS_UNAVAILABLE_MESSAGE = "All configured LLM providers are currently unavailable."
 
-DEFAULT_PROVIDER_ORDER = ["groq", "gemini", "mistral", "ollama"]
+# Mandatory fallback priority (V1 requirement) — do not reorder. A provider
+# is only skipped if it's in cooldown (see provider_health) or its call
+# fails; the next one is always tried in this exact sequence.
+DEFAULT_PROVIDER_ORDER = ["groq", "mistral", "ollama", "gemini"]
 
 
 def _unavailable_response(preferred_providers: list[str]) -> LLMResponse:
@@ -53,9 +56,8 @@ class InferenceEngine:
 
         # Skip providers already known-bad this session (quota/rate-limit/
         # unavailable, per provider_health's cooldown) and try the rest in
-        # order of recent success rate rather than the fixed default order —
-        # requirements: skip exhausted providers instantly, never retry a
-        # known-exhausted provider, auto-prioritize by recent success.
+        # the mandatory Groq → Mistral → Ollama → Gemini order — never
+        # retry a known-exhausted provider, never reorder by success rate.
         candidates = provider_health.ordered_candidates(preferred_providers)
 
         logger.debug(

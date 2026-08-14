@@ -1,45 +1,79 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { CheckCircle2, FileSearch, Gauge, ListChecks, Sparkles } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CheckCircle2, Clock, FileSearch, Gauge, Sparkles, XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SiteHeader } from "@/components/layout/site-header";
+import { ChatComposer } from "@/components/research/chat-composer";
 import { ResearchStatusBadge } from "@/components/research/status-badge";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { useRecentResearch } from "@/hooks/use-research";
-import { formatRelativeTime } from "@/lib/format";
+import { useCreateResearch, useRecentResearch } from "@/hooks/use-research";
+import { formatDuration, formatRelativeTime } from "@/lib/format";
 import { displayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
 
-function greeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-}
+// recharts is a sizable dependency (~110KB) that only this card on this page
+// needs — keeping it out of /dashboard's initial JS the same way mermaid and
+// katex are already kept out of /research/[id]'s (see CLAUDE.md).
+const StatusChart = dynamic(() => import("@/components/dashboard/status-chart").then((m) => m.StatusChart), {
+  ssr: false,
+  loading: () => <Skeleton className="h-full w-full" />,
+});
+
+const WELCOME_MESSAGES: ((name: string) => string)[] = [
+  (name) => `Welcome aboard, ${name}`,
+  (name) => `What's the agenda today, ${name}?`,
+  (name) => `Good to see you back, ${name}`,
+  (name) => `Ready to dig in, ${name}?`,
+  (name) => `${name}, let's find some answers`,
+  (name) => `Glad you're here, ${name}`,
+  (name) => `Where should we start, ${name}?`,
+];
 
 export default function DashboardPage() {
   const router = useRouter();
   const { data: user } = useCurrentUser();
-  const { data: runs, isLoading } = useRecentResearch(50);
+  // Same limit as the History page's query — shares one cached TanStack Query
+  // entry so navigating between Dashboard and History is instant (no refetch)
+  // instead of each page cold-fetching its own slightly different list.
+  const { data: runs, isLoading } = useRecentResearch(100);
+  const createResearch = useCreateResearch();
+  const [query, setQuery] = useState("");
+
+  // Chosen once per mount so the greeting changes every time the dashboard opens.
+  const [welcomeIndex] = useState(() => Math.floor(Math.random() * WELCOME_MESSAGES.length));
+
+  const handleSearchSubmit = () => {
+    if (query.trim().length < 10) return;
+    createResearch.mutate({ query: query.trim() });
+  };
 
   const total = runs?.length ?? 0;
   const completed = runs?.filter((r) => r.status === "completed").length ?? 0;
-  const inProgress = runs?.filter((r) => r.status === "pending" || r.status === "running").length ?? 0;
+  const failed = runs?.filter((r) => r.status === "failed").length ?? 0;
   const scores = runs?.map((r) => r.quality_score).filter((s): s is number => s != null) ?? [];
   const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
 
+  const durations =
+    runs
+      ?.filter((r) => r.status === "completed" && r.completed_at)
+      .map((r) => (new Date(r.completed_at!).getTime() - new Date(r.created_at).getTime()) / 1000)
+      .filter((seconds) => seconds > 0) ?? [];
+  const avgDuration = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
+
   const stats = [
-    { label: "Total research runs", value: total, icon: FileSearch, tint: "text-primary bg-primary/10" },
-    { label: "Completed", value: completed, icon: CheckCircle2, tint: "text-success bg-success/10" },
-    { label: "In progress", value: inProgress, icon: ListChecks, tint: "text-chart-2 bg-chart-2/10" },
+    { label: "Total research", value: total, icon: FileSearch, tint: "text-primary bg-primary/10" },
+    { label: "Successful", value: completed, icon: CheckCircle2, tint: "text-success bg-success/10" },
+    { label: "Failed", value: failed, icon: XCircle, tint: "text-destructive bg-destructive/10" },
+    { label: "Average time", value: avgDuration != null ? formatDuration(avgDuration) : "—", icon: Clock, tint: "text-chart-2 bg-chart-2/10" },
     { label: "Avg. quality score", value: avgScore != null ? avgScore : "—", icon: Gauge, tint: "text-chart-4 bg-chart-4/10" },
   ];
 
@@ -47,7 +81,7 @@ export default function DashboardPage() {
     { name: "Pending", count: runs?.filter((r) => r.status === "pending").length ?? 0, fill: "var(--color-chart-4)" },
     { name: "Running", count: runs?.filter((r) => r.status === "running").length ?? 0, fill: "var(--color-chart-2)" },
     { name: "Completed", count: completed, fill: "var(--color-chart-3)" },
-    { name: "Failed", count: runs?.filter((r) => r.status === "failed").length ?? 0, fill: "var(--color-chart-5)" },
+    { name: "Failed", count: failed, fill: "var(--color-chart-5)" },
   ];
 
   return (
@@ -66,11 +100,13 @@ export default function DashboardPage() {
             className="pointer-events-none absolute -top-16 -right-16 size-56 rounded-full bg-primary/10 blur-3xl"
           />
           <div className="relative space-y-1.5">
-            <p className="text-sm text-muted-foreground">
-              {greeting()}
-              {user ? `, ${displayName(user)}` : ""}
-            </p>
-            <h1 className="text-2xl font-semibold tracking-tight text-balance">Welcome back to DeepLens</h1>
+            {user ? (
+              <h1 className="text-2xl font-semibold tracking-tight text-balance">
+                {WELCOME_MESSAGES[welcomeIndex](displayName(user))}
+              </h1>
+            ) : (
+              <Skeleton className="h-8 w-64" />
+            )}
             <p className="text-sm text-muted-foreground">Here&apos;s what&apos;s happening with your research.</p>
           </div>
           <Button size="lg" className="relative shadow-sm" nativeButton={false} render={<Link href="/research/new" />}>
@@ -79,65 +115,59 @@ export default function DashboardPage() {
           </Button>
         </motion.div>
 
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {stats.map((stat, index) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: index * 0.05, ease: "easeOut" }}
-            >
-              <Card className="card-hover">
-                <CardHeader className="flex-row items-center justify-between space-y-0 pb-0">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">{stat.label}</CardTitle>
-                  <span className={cn("flex size-8 items-center justify-center rounded-lg", stat.tint)}>
-                    <stat.icon className="size-4" />
-                  </span>
-                </CardHeader>
-                <CardContent>
-                  {isLoading ? (
-                    <Skeleton className="h-8 w-14" />
-                  ) : (
-                    <p className="text-2xl font-semibold tabular-nums">{stat.value}</p>
-                  )}
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.05, ease: "easeOut" }}
+        >
+          <ChatComposer
+            value={query}
+            onChange={setQuery}
+            onSubmit={handleSearchSubmit}
+            isSubmitting={createResearch.isPending}
+            placeholder="Search or ask DeepLens to research anything…"
+          />
+        </motion.div>
 
-        {total > 0 && (
-          <Card>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-2 gap-4 self-start sm:grid-cols-3 lg:grid-cols-2">
+            {stats.map((stat, index) => (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: index * 0.05, ease: "easeOut" }}
+              >
+                <Card className="card-hover h-full">
+                  <CardHeader className="flex-row items-center justify-between space-y-0 pb-0">
+                    <CardTitle className="text-xs font-medium text-muted-foreground">{stat.label}</CardTitle>
+                    <span className={cn("flex size-8 items-center justify-center rounded-lg", stat.tint)}>
+                      <stat.icon className="size-4" />
+                    </span>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoading ? (
+                      <Skeleton className="h-8 w-14" />
+                    ) : (
+                      <p className="text-2xl font-semibold tabular-nums">{stat.value}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+
+          <Card className="flex flex-col">
             <CardHeader>
               <CardTitle>Research status breakdown</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="h-56 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ left: -20 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                    <XAxis dataKey="name" tickLine={false} axisLine={false} className="text-xs fill-muted-foreground" />
-                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} className="text-xs fill-muted-foreground" />
-                    <Tooltip
-                      cursor={{ fill: "var(--color-muted)" }}
-                      contentStyle={{
-                        background: "var(--color-popover)",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: "var(--radius-lg)",
-                        fontSize: 12,
-                      }}
-                    />
-                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                      {chartData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+            <CardContent className="flex-1">
+              <div className="h-64 w-full min-w-0 sm:h-full sm:min-h-56">
+                <StatusChart data={chartData} />
               </div>
             </CardContent>
           </Card>
-        )}
+        </div>
 
         <Card>
           <CardHeader>

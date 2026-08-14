@@ -60,6 +60,11 @@ const markdownComponents: Components = {
     return <CodeBlock className={className}>{String(children)}</CodeBlock>;
   },
   pre: ({ children }) => <>{children}</>,
+  table: ({ children }) => (
+    <div className="overflow-x-auto">
+      <table>{children}</table>
+    </div>
+  ),
 };
 
 export function ReportView({
@@ -124,7 +129,7 @@ export function ReportView({
           </Button>
           <Button variant="outline" size="sm" onClick={handleExportMarkdown}>
             <Download />
-            Export .md
+            Download Report
           </Button>
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer />

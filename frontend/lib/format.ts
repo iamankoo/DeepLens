@@ -19,3 +19,12 @@ export function formatRelativeTime(isoDate: string): string {
   }
   return relativeTimeFormatter.format(Math.round(seconds), "second");
 }
+
+export function formatDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (minutes === 0) return `${remainingSeconds}s`;
+  return `${minutes}m ${remainingSeconds}s`;
+}

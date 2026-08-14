@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileSearch, Plus, Search } from "lucide-react";
+import { FileSearch, FileText, Plus, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -74,7 +74,8 @@ export default function ResearchHistoryPage() {
                     <TableHead>Query</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Quality</TableHead>
-                    <TableHead className="text-right">Created</TableHead>
+                    <TableHead>Timestamp</TableHead>
+                    <TableHead className="text-right">Report</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -97,8 +98,22 @@ export default function ResearchHistoryPage() {
                       <TableCell className="tabular-nums text-muted-foreground">
                         {run.quality_score != null ? run.quality_score.toFixed(0) : "—"}
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        {formatRelativeTime(run.created_at)}
+                      <TableCell className="text-muted-foreground">{formatRelativeTime(run.created_at)}</TableCell>
+                      <TableCell className="text-right">
+                        {run.status === "completed" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            nativeButton={false}
+                            render={<Link href={`/research/${run.id}`} />}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <FileText />
+                            Report
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/60">—</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

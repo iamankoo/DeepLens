@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { ArrowUp, Globe, Layers, Loader2, Paperclip, Sparkles } from "lucide-react";
+import { ArrowUp, Globe, Layers, Loader2, Mic, MicOff, Paperclip, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,6 +11,32 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { FileAttachmentList } from "@/components/research/file-attachment-list";
 import { useFileAttachments } from "@/hooks/use-file-attachments";
 import { cn } from "@/lib/utils";
+
+interface SpeechRecognitionResultLike {
+  0: { transcript: string };
+}
+interface SpeechRecognitionEventLike {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+}
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as {
+    SpeechRecognition?: new () => SpeechRecognitionLike;
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
 
 const MODES = [
   { value: "web", label: "Web", icon: Globe, available: true },
@@ -37,6 +64,16 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const { files, addFiles, removeFile } = useFileAttachments();
   const inputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+
+  useEffect(() => {
+    setVoiceSupported(getSpeechRecognitionCtor() !== null);
+    return () => {
+      recognitionRef.current?.stop();
+    };
+  }, []);
 
   const onDrop = useCallback((accepted: File[]) => addFiles(accepted), [addFiles]);
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -44,6 +81,42 @@ export function ChatComposer({
     noClick: true,
     noKeyboard: true,
   });
+
+  const toggleVoiceInput = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const SpeechRecognitionCtor = getSpeechRecognitionCtor();
+    if (!SpeechRecognitionCtor) {
+      toast.error("Voice input isn't supported in this browser — try Chrome or Edge.");
+      return;
+    }
+
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((result) => result[0].transcript)
+        .join(" ")
+        .trim();
+      if (transcript) {
+        onChange(`${value ? `${value} ` : ""}${transcript}`.slice(0, maxLength));
+      }
+    };
+    recognition.onerror = () => {
+      toast.error("Couldn't capture audio — check microphone permissions.");
+      setIsListening(false);
+    };
+    recognition.onend = () => setIsListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  };
 
   const canSubmit = value.trim().length >= 10 && !isSubmitting;
 
@@ -121,14 +194,14 @@ export function ChatComposer({
                     type="button"
                     disabled={!mode.available}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                      "flex items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-medium transition-colors sm:px-2.5",
                       mode.available
                         ? "border-primary/30 bg-primary/10 text-primary"
                         : "cursor-not-allowed border-transparent text-muted-foreground/50"
                     )}
                   >
                     <mode.icon className="size-3.5" />
-                    {mode.label}
+                    <span className="hidden sm:inline">{mode.label}</span>
                   </button>
                 }
               />
@@ -137,6 +210,33 @@ export function ChatComposer({
               </TooltipContent>
             </Tooltip>
           ))}
+
+          <div className="mx-1 h-4 w-px bg-border" />
+
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant={isListening ? "default" : "ghost"}
+                  size="icon-sm"
+                  onClick={toggleVoiceInput}
+                  disabled={isSubmitting}
+                  className={cn(isListening && "animate-pulse")}
+                  aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                >
+                  {isListening ? <MicOff /> : <Mic />}
+                </Button>
+              }
+            />
+            <TooltipContent>
+              {voiceSupported
+                ? isListening
+                  ? "Stop recording"
+                  : "Dictate your research query"
+                : "Voice input isn't supported in this browser"}
+            </TooltipContent>
+          </Tooltip>
         </div>
 
         <div className="flex items-center gap-2">
@@ -144,7 +244,7 @@ export function ChatComposer({
             <Sparkles className="mr-1 inline size-3 align-[-1px]" />
             Auto
           </span>
-          <span className="text-xs tabular-nums text-muted-foreground/70">
+          <span className="hidden text-xs tabular-nums text-muted-foreground/70 sm:inline">
             {value.length}/{maxLength}
           </span>
           <Button

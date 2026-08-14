@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SiteHeader } from "@/components/layout/site-header";
 import { AssistantMessage, UserMessage } from "@/components/research/message-bubble";
-import { StageProgress } from "@/components/research/stage-progress";
+import { RobotProgress } from "@/components/research/robot-progress";
 import { ReportView } from "@/components/research/report-view";
 
 import { useResearchRun } from "@/hooks/use-research";
@@ -54,7 +54,12 @@ export default function ResearchDetailPage({ params }: { params: Promise<{ id: s
                     animate={{ opacity: 1 }}
                     className="rounded-2xl rounded-tl-md border bg-card px-4 py-4"
                   >
-                    <StageProgress currentStep={run.current_step} iteration={run.iteration} />
+                    <RobotProgress
+                      currentStep={run.current_step}
+                      iteration={run.iteration}
+                      status={run.status}
+                      query={run.query}
+                    />
                   </motion.div>
                 )}
 

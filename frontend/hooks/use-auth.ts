@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { authService } from "@/services/auth-service";
 import { useAuthStore } from "@/stores/auth-store";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { displayName } from "@/lib/user";
 import type {
   ForgotPasswordPayload,
   LoginPayload,
@@ -56,7 +57,7 @@ export function useLogin() {
       const user = await authService.me();
       setUser(user);
       queryClient.setQueryData(CURRENT_USER_QUERY_KEY, user);
-      toast.success(`Welcome back, ${user.email}`);
+      toast.success(`Welcome back, ${displayName(user)}`);
       router.push("/dashboard");
     },
     onError: (error) => {
