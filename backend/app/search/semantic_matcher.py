@@ -2,6 +2,7 @@ import time
 
 from pydantic import BaseModel
 
+from app.core.logger import logger
 from app.search.chunk import SearchChunk
 from app.search.retrieval_manager import retrieval_manager
 from app.search.schemas import SearchResult
@@ -39,14 +40,16 @@ class SemanticMatcher:
         best_score = -1.0
 
         total = len(capped_sources)
-        print(f"    [SemanticMatcher] Matching paragraph against {total} sources "
-              f"(capped from {len(sources)})...")
+        logger.debug(
+            "matching paragraph against sources",
+            extra={"total": total, "uncapped_total": len(sources)},
+        )
 
         t0_total = time.perf_counter()
 
         for i, source in enumerate(capped_sources, 1):
 
-            print(f"    [SemanticMatcher] Source {i}/{total}: {source.url[:80]}")
+            logger.debug("matching source", extra={"index": i, "total": total, "url": source.url[:80]})
             t0 = time.perf_counter()
 
             try:
@@ -57,24 +60,27 @@ class SemanticMatcher:
                     top_k=1,
                 )
             except Exception as e:
-                print(f"    [SemanticMatcher] ERROR retrieving from source {i}: {e}")
+                logger.error("error retrieving from source", extra={"index": i, "error": str(e)})
                 continue
 
             elapsed = time.perf_counter() - t0
 
             if not chunks:
-                print(f"    [SemanticMatcher] No chunks returned ({elapsed:.2f}s)")
+                logger.debug("no chunks returned", extra={"elapsed_s": round(elapsed, 2)})
                 continue
 
             chunk = chunks[0]
-            print(f"    [SemanticMatcher] Score={chunk.similarity:.4f} ({elapsed:.2f}s)")
+            logger.debug("source scored", extra={"score": round(chunk.similarity, 4), "elapsed_s": round(elapsed, 2)})
 
             if chunk.similarity > best_score:
                 best_score = chunk.similarity
                 best_chunk = chunk
 
         elapsed_total = time.perf_counter() - t0_total
-        print(f"    [SemanticMatcher] Best score={best_score:.4f} in {elapsed_total:.2f}s total")
+        logger.debug(
+            "best match found",
+            extra={"best_score": round(best_score, 4), "elapsed_s": round(elapsed_total, 2)},
+        )
 
         return SemanticMatch(
             similarity_score=best_score,

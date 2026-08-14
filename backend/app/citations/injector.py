@@ -2,6 +2,7 @@ import time
 
 import numpy as np
 
+from app.core.logger import logger
 from app.search.chunk import SearchChunk
 from app.search.schemas import SearchResult
 from app.memory.providers.sentence_transformer_provider import (
@@ -32,8 +33,10 @@ class CitationInjector:
 
         total = len(paragraphs)
         pool_size = len(chunk_pool) if chunk_pool else 0
-        print(f"  [CitationInjector] {total} paragraphs | chunk_pool={pool_size} | "
-              f"sources={len(sources)}")
+        logger.debug(
+            "injecting citations",
+            extra={"paragraphs": total, "chunk_pool": pool_size, "sources": len(sources)},
+        )
 
         # Build URL -> source lookup
         url_to_source: dict[str, SearchResult] = {
@@ -46,7 +49,7 @@ class CitationInjector:
             updated = self._inject_from_sources(paragraphs, sources)
 
         result = "\n\n".join(updated)
-        print(f"  [CitationInjector] Done — {total} paragraphs processed")
+        logger.debug("citation injection done", extra={"paragraphs": total})
         return result
 
     # ── Fast batch pool path ──────────────────────────────────────────────────
@@ -60,17 +63,17 @@ class CitationInjector:
 
         # Filter chunks that have embeddings
         valid_chunks = [c for c in chunk_pool if c.embedding is not None]
-        print(f"  [CitationInjector] Valid embedded chunks: {len(valid_chunks)}")
+        logger.debug("valid embedded chunks", extra={"count": len(valid_chunks)})
 
         if not valid_chunks:
-            print("  [CitationInjector] No valid chunks — no citations injected")
+            logger.warning("no valid chunks — no citations injected")
             return paragraphs
 
         # Stack chunk embeddings into matrix
         try:
             chunk_matrix = np.array([c.embedding for c in valid_chunks])  # (N, D)
         except Exception as e:
-            print(f"  [CitationInjector] ERROR building chunk matrix: {e}")
+            logger.error("error building chunk matrix", extra={"error": str(e)})
             return paragraphs
 
         # Batch embed ALL paragraphs in one forward pass
@@ -85,11 +88,14 @@ class CitationInjector:
                 )
             )  # (P, D)
         except Exception as e:
-            print(f"  [CitationInjector] ERROR batch-embedding: {e}")
+            logger.error("error batch-embedding paragraphs", extra={"error": str(e)})
             return paragraphs
 
         elapsed = time.perf_counter() - t0
-        print(f"  [CitationInjector] Batch embedded {len(paragraphs)} paragraphs in {elapsed:.2f}s")
+        logger.debug(
+            "batch embedded paragraphs",
+            extra={"paragraph_count": len(paragraphs), "elapsed_s": round(elapsed, 2)},
+        )
 
         # (P, N) scores matrix
         scores_matrix = para_matrix @ chunk_matrix.T
@@ -101,7 +107,7 @@ class CitationInjector:
             best_chunk = valid_chunks[best_idx]
 
             if best_score <= 0:
-                print(f"  [CitationInjector] Para {i}: no match (score={best_score:.4f}) -> no citation")
+                logger.debug("no match for paragraph — no citation", extra={"paragraph_index": i, "score": round(best_score, 4)})
                 updated.append(paragraph)
                 continue
 
@@ -116,7 +122,10 @@ class CitationInjector:
                 published_date = "n.d."
 
             citation = f" ({source_name}, {published_date})"
-            print(f"  [CitationInjector] Para {i}: -> {source_name!r} score={best_score:.4f}")
+            logger.debug(
+                "citation matched",
+                extra={"paragraph_index": i, "source_name": source_name, "score": round(best_score, 4)},
+            )
             updated.append(paragraph + citation)
 
         return updated
@@ -135,7 +144,7 @@ class CitationInjector:
 
         updated = []
         for i, paragraph in enumerate(paragraphs, 1):
-            print(f"  [CitationInjector] Para {i}/{len(paragraphs)} (slow path)...")
+            logger.debug("citation injection (slow path)", extra={"paragraph_index": i, "total": len(paragraphs)})
             try:
                 match = semantic_matcher.best_match(paragraph, sources)
                 if match.chunk and match.similarity_score > 0:
@@ -149,7 +158,7 @@ class CitationInjector:
                 else:
                     updated.append(paragraph)
             except Exception as e:
-                print(f"  [CitationInjector] Para {i} ERROR: {e}")
+                logger.error("citation injection error", extra={"paragraph_index": i, "error": str(e)})
                 updated.append(paragraph)
         return updated
 

@@ -1,5 +1,6 @@
 import time
 
+from app.core.logger import logger
 from app.intelligence.evidence import evidence_engine
 from app.intelligence.quality_schema import QualityReport
 from app.search.schemas import SearchResult
@@ -31,8 +32,10 @@ class QualityEngine:
         pool_size = len(chunk_pool) if chunk_pool else 0
         src_count = len(sources) if sources else 0
 
-        print(f"  [QualityEngine] Evaluating {total_paragraphs} paragraphs "
-              f"| chunk_pool={pool_size} | sources={src_count}")
+        logger.debug(
+            "evaluating quality",
+            extra={"total_paragraphs": total_paragraphs, "chunk_pool": pool_size, "sources": src_count},
+        )
 
         t0 = time.perf_counter()
 
@@ -50,17 +53,30 @@ class QualityEngine:
         elapsed = time.perf_counter() - t0
 
         for i, r in enumerate(evidence_results, 1):
-            print(f"  [QualityEngine] Para {i}/{total}: "
-                  f"level={r.evidence_level.value} "
-                  f"score={r.similarity_score:.4f} "
-                  f"supported={r.supported}")
+            logger.debug(
+                "paragraph evidence evaluated",
+                extra={
+                    "index": i,
+                    "total": total,
+                    "evidence_level": r.evidence_level.value,
+                    "score": round(r.similarity_score, 4),
+                    "supported": r.supported,
+                },
+            )
 
         evidence_score = (supported / total if total else 0) * 100
         hallucination_score = (hallucinated / total if total else 0) * 100
         overall_score = evidence_score * 0.7 + (100 - hallucination_score) * 0.3
 
-        print(f"  [QualityEngine] Done in {elapsed:.2f}s — "
-              f"overall={round(overall_score, 2)} supported={supported}/{total}")
+        logger.debug(
+            "quality evaluation done",
+            extra={
+                "elapsed_s": round(elapsed, 2),
+                "overall_score": round(overall_score, 2),
+                "supported": supported,
+                "total": total,
+            },
+        )
 
         return QualityReport(
             total_paragraphs=total,

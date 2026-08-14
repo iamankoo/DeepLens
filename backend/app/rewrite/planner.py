@@ -1,5 +1,6 @@
 import time
 
+from app.core.logger import logger
 from app.intelligence.evidence_level import EvidenceLevel
 from app.intelligence.quality_schema import QualityReport
 from app.rewrite.rewrite_strategy import RewriteStrategy
@@ -15,21 +16,23 @@ class RewritePlanner:
     ) -> list[RewriteTask]:
 
         total = len(quality_report.evidence_results)
-        print(f"  [RewritePlanner] Planning rewrites for {total} paragraphs")
+        logger.debug("planning rewrites", extra={"total_paragraphs": total})
         t0 = time.perf_counter()
 
         tasks = []
 
         for index, result in enumerate(quality_report.evidence_results):
 
-            print(f"  [RewritePlanner] Paragraph {index+1}/{total}: "
-                  f"level={result.evidence_level.value}")
+            logger.debug(
+                "planner evaluating paragraph",
+                extra={"index": index + 1, "total": total, "evidence_level": result.evidence_level.value},
+            )
 
             if result.evidence_level in (
                 EvidenceLevel.STRONG,
                 EvidenceLevel.MODERATE,
             ):
-                print(f"  [RewritePlanner]   -> Skipping (well-supported)")
+                logger.debug("skipping paragraph — well-supported", extra={"index": index + 1})
                 continue
 
             strategy = (
@@ -49,8 +52,15 @@ class RewritePlanner:
                     source=result.best_chunk.source_name or "Unknown",
                 )
 
-            print(f"  [RewritePlanner]   -> strategy={strategy.value}, "
-                  f"claims={len(claims)}, has_source={source is not None}")
+            logger.debug(
+                "planned rewrite task",
+                extra={
+                    "index": index + 1,
+                    "strategy": strategy.value,
+                    "claims": len(claims),
+                    "has_source": source is not None,
+                },
+            )
 
             tasks.append(
                 RewriteTask(
@@ -66,11 +76,14 @@ class RewritePlanner:
         # Cap rewrite tasks to avoid long sequential LLM calls
         MAX_REWRITE_TASKS = 3
         if len(tasks) > MAX_REWRITE_TASKS:
-            print(f"  [RewritePlanner] Capping rewrite tasks from {len(tasks)} to {MAX_REWRITE_TASKS}")
+            logger.debug(
+                "capping rewrite tasks",
+                extra={"original_count": len(tasks), "max_tasks": MAX_REWRITE_TASKS},
+            )
             tasks = tasks[:MAX_REWRITE_TASKS]
 
         elapsed = time.perf_counter() - t0
-        print(f"  [RewritePlanner] Done — {len(tasks)} rewrite tasks in {elapsed:.2f}s")
+        logger.debug("rewrite planning done", extra={"task_count": len(tasks), "elapsed_s": round(elapsed, 2)})
         return tasks
 
 

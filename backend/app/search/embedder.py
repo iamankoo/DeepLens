@@ -1,5 +1,6 @@
 import time
 
+from app.core.logger import logger
 from app.memory.providers.sentence_transformer_provider import (
     sentence_transformer_provider,
 )
@@ -20,7 +21,7 @@ class ChunkEmbedder:
             return chunks
 
         total = len(chunks)
-        print(f"    [ChunkEmbedder] Batch-embedding {total} chunks...")
+        logger.debug("batch-embedding chunks", extra={"total": total})
         t0 = time.perf_counter()
 
         texts = [chunk.text for chunk in chunks]
@@ -35,16 +36,16 @@ class ChunkEmbedder:
             for chunk, emb in zip(chunks, embeddings):
                 chunk.embedding = emb.tolist()
         except Exception as e:
-            print(f"    [ChunkEmbedder] Batch embed ERROR: {e} — falling back to per-chunk")
+            logger.warning("batch embed failed — falling back to per-chunk", extra={"error": str(e)})
             for i, chunk in enumerate(chunks, 1):
                 try:
                     chunk.embedding = sentence_transformer_provider.embed(chunk.text)
                 except Exception as e2:
-                    print(f"    [ChunkEmbedder] ERROR chunk {i}: {e2}")
+                    logger.error("per-chunk embed failed", extra={"chunk_index": i, "error": str(e2)})
                     chunk.embedding = [0.0] * 384
 
         elapsed = time.perf_counter() - t0
-        print(f"    [ChunkEmbedder] Done — {total} chunks in {elapsed:.2f}s")
+        logger.debug("batch embed done", extra={"total": total, "elapsed_s": round(elapsed, 2)})
         return chunks
 
 

@@ -2,17 +2,19 @@ import time
 
 from sentence_transformers import CrossEncoder
 
+from app.core.logger import logger
+
 
 class CrossEncoderRanker:
 
     def __init__(self):
-        print("[CrossEncoder] Loading model: cross-encoder/ms-marco-MiniLM-L-6-v2")
+        logger.debug("loading cross-encoder model", extra={"model": "cross-encoder/ms-marco-MiniLM-L-6-v2"})
         t0 = time.perf_counter()
         self.model = CrossEncoder(
             "cross-encoder/ms-marco-MiniLM-L-6-v2"
         )
         elapsed = time.perf_counter() - t0
-        print(f"[CrossEncoder] Model loaded in {elapsed:.2f}s")
+        logger.debug("cross-encoder model loaded", extra={"elapsed_s": round(elapsed, 2)})
 
     def rerank(
         self,
@@ -22,7 +24,7 @@ class CrossEncoderRanker:
         if not chunks:
             return []
 
-        print(f"    [CrossEncoder] Reranking {len(chunks)} chunks...")
+        logger.debug("reranking chunks", extra={"chunk_count": len(chunks)})
         t0 = time.perf_counter()
 
         try:
@@ -34,7 +36,7 @@ class CrossEncoderRanker:
             scores = self.model.predict(pairs)
 
         except Exception as e:
-            print(f"    [CrossEncoder] ERROR during predict: {e}")
+            logger.error("error during cross-encoder predict", extra={"error": str(e)})
             # Fallback: return chunks with score 0.0
             return [(chunk, 0.0) for chunk in chunks]
 
@@ -46,7 +48,7 @@ class CrossEncoderRanker:
         )
 
         elapsed = time.perf_counter() - t0
-        print(f"    [CrossEncoder] Reranked {len(chunks)} chunks in {elapsed:.2f}s")
+        logger.debug("reranked chunks", extra={"chunk_count": len(chunks), "elapsed_s": round(elapsed, 2)})
 
         return ranked
 

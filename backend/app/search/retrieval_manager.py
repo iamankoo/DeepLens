@@ -1,5 +1,6 @@
 import time
 
+from app.core.logger import logger
 from app.search.content_extractor import content_extractor
 from app.search.document_normalizer import document_normalizer
 from app.search.chunker import semantic_chunker
@@ -17,13 +18,13 @@ class RetrievalManager:
         url: str,
         top_k: int = 3,
     ):
-        print(f"      [RetrievalManager] Retrieving: {url[:80]}")
+        logger.debug("retrieving", extra={"url": url[:80]})
         t0 = time.perf_counter()
 
         # 1. Extract
         text = content_extractor.extract(url)
         if not text:
-            print(f"      [RetrievalManager] No text extracted — skipping")
+            logger.debug("no text extracted — skipping")
             return []
 
         # 2. Normalize
@@ -36,7 +37,7 @@ class RetrievalManager:
             title=title,
             url=url,
         )
-        print(f"      [RetrievalManager] {len(chunks)} chunks in {time.perf_counter()-t1:.2f}s")
+        logger.debug("chunked", extra={"chunk_count": len(chunks), "elapsed_s": round(time.perf_counter() - t1, 2)})
 
         if not chunks:
             return []
@@ -44,7 +45,7 @@ class RetrievalManager:
         # 4. Embed
         t1 = time.perf_counter()
         chunks = chunk_embedder.embed(chunks)
-        print(f"      [RetrievalManager] Embedded in {time.perf_counter()-t1:.2f}s")
+        logger.debug("embedded", extra={"elapsed_s": round(time.perf_counter() - t1, 2)})
 
         # 5. Retrieve (semantic)
         t1 = time.perf_counter()
@@ -53,7 +54,7 @@ class RetrievalManager:
             chunks=chunks,
             top_k=20,
         )
-        print(f"      [RetrievalManager] Retrieved {len(retrieved)} in {time.perf_counter()-t1:.2f}s")
+        logger.debug("retrieved", extra={"count": len(retrieved), "elapsed_s": round(time.perf_counter() - t1, 2)})
 
         if not retrieved:
             return []
@@ -64,7 +65,7 @@ class RetrievalManager:
             query=query,
             chunks=retrieved,
         )
-        print(f"      [RetrievalManager] Reranked in {time.perf_counter()-t1:.2f}s")
+        logger.debug("reranked", extra={"elapsed_s": round(time.perf_counter() - t1, 2)})
 
         final_chunks = []
         for chunk, score in reranked[:top_k]:
@@ -72,7 +73,7 @@ class RetrievalManager:
             final_chunks.append(chunk)
 
         elapsed = time.perf_counter() - t0
-        print(f"      [RetrievalManager] Done — {len(final_chunks)} final chunks in {elapsed:.2f}s")
+        logger.debug("retrieval done", extra={"final_chunks": len(final_chunks), "elapsed_s": round(elapsed, 2)})
         return final_chunks
 
 

@@ -91,6 +91,11 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = "noreply@deeplens.local"
     SMTP_USE_TLS: bool = True
+    # smtplib.SMTP() has no timeout by default — same class of bug as the LLM
+    # providers (app/providers/llm/*): an unreachable or slow SMTP host would
+    # hang the request indefinitely instead of failing. Applied at the
+    # connection call in app/core/email.py.
+    SMTP_TIMEOUT_SECONDS: int = 30
 
     # ---- Frontend ----
     # Used to build links (password reset, email verification) sent by email.

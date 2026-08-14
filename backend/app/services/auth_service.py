@@ -89,14 +89,21 @@ class AuthService:
         )
 
         reset_link = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
-        await run_in_threadpool(
-            email_sender.send,
-            to=user.email,
-            subject="Reset your DeepLens password",
-            body=f"Reset your password: {reset_link}\n\nThis link expires in "
-            f"{settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutes. "
-            f"If you didn't request this, ignore this email.",
-        )
+        try:
+            await run_in_threadpool(
+                email_sender.send,
+                to=user.email,
+                subject="Reset your DeepLens password",
+                body=f"Reset your password: {reset_link}\n\nThis link expires in "
+                f"{settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutes. "
+                f"If you didn't request this, ignore this email.",
+            )
+        except Exception:
+            # Same reasoning as _send_verification_email: a broken SMTP config
+            # shouldn't turn into a raw 500 on the caller — the reset token is
+            # already persisted, and the endpoint returns a generic response
+            # regardless of whether the address exists.
+            logger.exception("failed to send password reset email", extra={"user_id": user.id})
 
     async def reset_password(self, db: AsyncSession, *, raw_token: str, new_password: str) -> None:
         token_hash = hash_email_token(raw_token)

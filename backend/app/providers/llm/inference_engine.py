@@ -58,13 +58,15 @@ class InferenceEngine:
         # known-exhausted provider, auto-prioritize by recent success.
         candidates = provider_health.ordered_candidates(preferred_providers)
 
-        print("\n========================================================")
-        print("[InferenceEngine] Starting inference")
-        print(f"[InferenceEngine] Prompt Length : {len(prompt)}")
-        print(f"[InferenceEngine] Max Tokens   : {max_tokens}")
-        print(f"[InferenceEngine] Configured   : {preferred_providers}")
-        print(f"[InferenceEngine] Candidates   : {candidates} (cooled-down providers skipped)")
-        print("========================================================")
+        logger.debug(
+            "starting inference",
+            extra={
+                "prompt_length": len(prompt),
+                "max_tokens": max_tokens,
+                "configured_providers": preferred_providers,
+                "candidates": candidates,
+            },
+        )
 
         if not candidates:
             return _unavailable_response(preferred_providers)
@@ -73,20 +75,19 @@ class InferenceEngine:
 
         for provider_name in candidates:
 
-            print(f"\n[InferenceEngine] Trying provider: {provider_name}")
-
             provider = self.registry.get(provider_name)
 
             if provider is None:
-                print(f"[InferenceEngine] Provider '{provider_name}' not registered")
+                logger.warning("provider not registered", extra={"provider": provider_name})
                 continue
 
             try:
                 available = provider.is_available()
-                print(f"[InferenceEngine] Available: {available}")
             except Exception:
-                print("[InferenceEngine] is_available() crashed")
-                print(traceback.format_exc())
+                logger.error(
+                    "provider.is_available() crashed",
+                    extra={"provider": provider_name, "traceback": traceback.format_exc()},
+                )
                 continue
 
             if not available:
@@ -94,8 +95,6 @@ class InferenceEngine:
 
             start = time.perf_counter()
             try:
-
-                print(f"[InferenceEngine] Calling {provider_name}.generate()")
 
                 # This is a real generation call, not a cheap availability
                 # probe — is_available() above only checks the provider is
@@ -110,10 +109,9 @@ class InferenceEngine:
 
                 elapsed_ms = (time.perf_counter() - start) * 1000
 
-                print(
-                    f"[InferenceEngine] {provider_name} returned "
-                    f"(success={response.success}) "
-                    f"in {elapsed_ms / 1000:.2f}s"
+                logger.debug(
+                    "provider call returned",
+                    extra={"provider": provider_name, "success": response.success, "elapsed_ms": round(elapsed_ms, 1)},
                 )
 
                 if response.success:
@@ -126,8 +124,10 @@ class InferenceEngine:
             except Exception as e:
 
                 elapsed_ms = (time.perf_counter() - start) * 1000
-                print(f"[InferenceEngine] {provider_name} crashed")
-                print(traceback.format_exc())
+                logger.error(
+                    "provider call crashed",
+                    extra={"provider": provider_name, "elapsed_ms": round(elapsed_ms, 1), "traceback": traceback.format_exc()},
+                )
                 provider_health.record_failure(provider_name, str(e))
                 # Bug fixed here: this branch used to record the failure but
                 # never set last_response, so a provider that raised (rather
@@ -145,8 +145,6 @@ class InferenceEngine:
                     error=str(e),
                     metadata={},
                 )
-
-        print("\n[InferenceEngine] No provider succeeded.")
 
         if last_response:
             logger.error(

@@ -2,6 +2,7 @@ import time
 
 import numpy as np
 
+from app.core.logger import logger
 from app.intelligence.evidence_level import EvidenceLevel
 from app.intelligence.schemas import EvidenceResult
 from app.search.chunk import SearchChunk
@@ -53,7 +54,7 @@ class EvidenceEngine:
             return self._batch_from_pool(paragraphs, chunk_pool)
 
         # Slow legacy path — one at a time
-        print(f"    [EvidenceEngine] WARNING: no chunk_pool — slow path for {len(paragraphs)} paragraphs")
+        logger.warning("no chunk_pool — using slow verification path", extra={"paragraph_count": len(paragraphs)})
         return [self._verify_from_sources(p, sources or []) for p in paragraphs]
 
     # ── Batch fast path ───────────────────────────────────────────────────────
@@ -67,14 +68,14 @@ class EvidenceEngine:
         # Filter chunks with valid embeddings
         valid_chunks = [c for c in chunk_pool if c.embedding is not None]
         if not valid_chunks:
-            print(f"    [EvidenceEngine] No valid embedded chunks -> all NONE")
+            logger.warning("no valid embedded chunks — all NONE")
             return [self._none_result(p) for p in paragraphs]
 
         # Stack chunk embeddings into matrix once
         try:
             chunk_matrix = np.array([c.embedding for c in valid_chunks])  # (N, D)
         except Exception as e:
-            print(f"    [EvidenceEngine] ERROR building chunk matrix: {e}")
+            logger.error("error building chunk matrix", extra={"error": str(e)})
             return [self._none_result(p) for p in paragraphs]
 
         # Batch embed all paragraphs in ONE model call
@@ -89,11 +90,14 @@ class EvidenceEngine:
                 )
             )  # (P, D)
         except Exception as e:
-            print(f"    [EvidenceEngine] ERROR batch-embedding paragraphs: {e}")
+            logger.error("error batch-embedding paragraphs", extra={"error": str(e)})
             return [self._none_result(p) for p in paragraphs]
 
         elapsed = time.perf_counter() - t0
-        print(f"    [EvidenceEngine] Batch embedded {len(paragraphs)} paragraphs in {elapsed:.2f}s")
+        logger.debug(
+            "batch embedded paragraphs",
+            extra={"paragraph_count": len(paragraphs), "elapsed_s": round(elapsed, 2)},
+        )
 
         # Dot product: (P, D) @ (D, N) = (P, N)
         scores_matrix = para_matrix @ chunk_matrix.T  # (P, N)
@@ -145,7 +149,7 @@ class EvidenceEngine:
                 best_chunk=safe_chunk,
             )
         except Exception as e:
-            print(f"    [EvidenceEngine] semantic_matcher ERROR: {e}")
+            logger.error("semantic_matcher error", extra={"error": str(e)})
             return self._none_result(paragraph)
 
     # ── Helpers ───────────────────────────────────────────────────────────────

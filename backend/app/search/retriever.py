@@ -2,6 +2,7 @@ import time
 
 import numpy as np
 
+from app.core.logger import logger
 from app.memory.providers.sentence_transformer_provider import (
     sentence_transformer_provider,
 )
@@ -21,7 +22,7 @@ class SemanticRetriever:
         if not chunks:
             return []
 
-        print(f"    [SemanticRetriever] Embedding query, scoring {len(chunks)} chunks...")
+        logger.debug("embedding query and scoring chunks", extra={"chunk_count": len(chunks)})
         t0 = time.perf_counter()
 
         try:
@@ -29,7 +30,7 @@ class SemanticRetriever:
                 sentence_transformer_provider.embed(query)
             )
         except Exception as e:
-            print(f"    [SemanticRetriever] ERROR embedding query: {e}")
+            logger.error("error embedding query", extra={"error": str(e)})
             return []
 
         valid_chunks = []
@@ -39,14 +40,14 @@ class SemanticRetriever:
                 continue
             valid_chunks.append(chunk)
 
-        print(f"    [SemanticRetriever] Valid (embedded) chunks: {len(valid_chunks)}/{len(chunks)}")
+        logger.debug("valid embedded chunks", extra={"valid": len(valid_chunks), "total": len(chunks)})
 
         for chunk in valid_chunks:
             try:
                 chunk_embedding = np.array(chunk.embedding)
                 chunk.similarity = float(np.dot(query_embedding, chunk_embedding))
             except Exception as e:
-                print(f"    [SemanticRetriever] ERROR scoring chunk: {e}")
+                logger.error("error scoring chunk", extra={"error": str(e)})
                 chunk.similarity = 0.0
 
         ranked = chunk_ranker.rank(
@@ -55,7 +56,10 @@ class SemanticRetriever:
         )
 
         elapsed = time.perf_counter() - t0
-        print(f"    [SemanticRetriever] Retrieved top-{min(top_k, len(ranked))} in {elapsed:.2f}s")
+        logger.debug(
+            "retrieved top chunks",
+            extra={"top_k": min(top_k, len(ranked)), "elapsed_s": round(elapsed, 2)},
+        )
 
         return ranked[:top_k]
 

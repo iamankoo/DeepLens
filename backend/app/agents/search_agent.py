@@ -1,6 +1,7 @@
 import time
 from urllib.parse import urlparse
 
+from app.core.logger import logger
 from app.providers.search.manager import search_manager
 from app.search.schemas import SearchResult
 from app.search.credibility import credibility_scorer
@@ -30,19 +31,19 @@ class SearchAgent:
         all_results: list[SearchResult] = []
         seen_urls: set[str] = set()
 
-        print(f"  [SearchAgent] Searching {len(queries)} queries via provider...")
+        logger.debug("searching queries via provider", extra={"query_count": len(queries)})
         t0 = time.perf_counter()
 
         for qi, query in enumerate(queries, 1):
-            print(f"  [SearchAgent] Query {qi}/{len(queries)}: {query[:80]}")
+            logger.debug("running query", extra={"index": qi, "total": len(queries), "query": query[:80]})
             t1 = time.perf_counter()
             try:
                 results = search_manager.search(query)
             except Exception as e:
-                print(f"  [SearchAgent] ERROR searching query {qi}: {e}")
+                logger.error("error searching query", extra={"index": qi, "error": str(e)})
                 continue
             elapsed = time.perf_counter() - t1
-            print(f"  [SearchAgent] Query {qi}: {len(results)} results in {elapsed:.2f}s")
+            logger.debug("query completed", extra={"index": qi, "result_count": len(results), "elapsed_s": round(elapsed, 2)})
 
             for result in results:
                 url = result["url"].strip().lower()
@@ -74,13 +75,16 @@ class SearchAgent:
                         embedding_text
                     )
                 except Exception as e:
-                    print(f"  [SearchAgent] WARNING: embed failed for result: {e}")
+                    logger.warning("embed failed for result", extra={"error": str(e)})
                     search_result.embedding = None
 
                 all_results.append(search_result)
 
         elapsed_total = time.perf_counter() - t0
-        print(f"  [SearchAgent] Done — {len(all_results)} unique results in {elapsed_total:.2f}s")
+        logger.debug(
+            "search agent done",
+            extra={"unique_results": len(all_results), "elapsed_s": round(elapsed_total, 2)},
+        )
         return all_results
 
 

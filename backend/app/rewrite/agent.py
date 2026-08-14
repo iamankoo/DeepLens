@@ -1,5 +1,6 @@
 import time
 
+from app.core.logger import logger
 from app.prompts.rewrite import REWRITE_SYSTEM_PROMPT
 from app.providers.llm.manager import llm_manager
 from app.rewrite.schemas import (
@@ -16,9 +17,14 @@ class RewriteAgent:
         task: RewriteTask,
     ) -> RewriteResponse:
 
-        print(f"  [RewriteAgent] Rewriting paragraph {task.paragraph_index} "
-              f"(strategy={task.rewrite_strategy.value}, "
-              f"level={task.evidence_level.value})")
+        logger.debug(
+            "rewriting paragraph",
+            extra={
+                "paragraph_index": task.paragraph_index,
+                "strategy": task.rewrite_strategy.value,
+                "evidence_level": task.evidence_level.value,
+            },
+        )
 
         source_text = ""
 
@@ -66,7 +72,7 @@ Return ONLY the corrected paragraph.
 """
 
         t0 = time.perf_counter()
-        print(f"  [RewriteAgent] Calling LLM...")
+        logger.debug("calling LLM")
 
         try:
             response = llm_manager.generate(
@@ -74,18 +80,20 @@ Return ONLY the corrected paragraph.
                 prompt=user_prompt,
             )
         except Exception as e:
-            print(f"  [RewriteAgent] ERROR calling LLM: {e}")
+            logger.error("LLM call failed", extra={"error": str(e)})
             raise
 
         elapsed = time.perf_counter() - t0
 
         if not response.success:
-            print(f"  [RewriteAgent] LLM returned failure: {response.error}")
+            logger.error("LLM returned failure", extra={"error": response.error})
             raise LLMProviderError(response.error)
 
         rewritten = response.content.strip()
-        print(f"  [RewriteAgent] Rewritten in {elapsed:.2f}s — "
-              f"{len(rewritten)} chars output")
+        logger.debug(
+            "paragraph rewritten",
+            extra={"elapsed_s": round(elapsed, 2), "output_chars": len(rewritten)},
+        )
 
         return RewriteResponse(
             paragraph_index=task.paragraph_index,

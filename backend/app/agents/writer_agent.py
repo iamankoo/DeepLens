@@ -1,3 +1,4 @@
+from app.core.logger import logger
 from app.prompts.writer import WRITER_SYSTEM_PROMPT
 from app.providers.llm.manager import llm_manager
 from app.schemas.writer import WriterRequest, WriterResponse
@@ -43,7 +44,10 @@ Content:
         # Cap context to avoid excessive LLM latency (12k chars ~3k tokens)
         MAX_CONTEXT_CHARS = 12_000
         if len(context_text) > MAX_CONTEXT_CHARS:
-            print(f"  [WriterAgent] Capping context from {len(context_text)} to {MAX_CONTEXT_CHARS} chars")
+            logger.debug(
+                "capping context",
+                extra={"original_chars": len(context_text), "max_chars": MAX_CONTEXT_CHARS},
+            )
             context_text = context_text[:MAX_CONTEXT_CHARS] + "\n\n[Context truncated for brevity]"
 
         user_prompt = f"""
@@ -72,7 +76,7 @@ Write a comprehensive research report.
 """
 
         import time as _time
-        print(f"  [WriterAgent] Sending {len(user_prompt)} char prompt to LLM...")
+        logger.debug("sending prompt to LLM", extra={"prompt_chars": len(user_prompt)})
         _t0 = _time.perf_counter()
 
         response = llm_manager.generate(
@@ -80,7 +84,7 @@ Write a comprehensive research report.
             prompt=user_prompt,
         )
 
-        print(f"  [WriterAgent] LLM responded in {_time.perf_counter()-_t0:.2f}s")
+        logger.debug("LLM responded", extra={"elapsed_s": round(_time.perf_counter() - _t0, 2)})
 
         if not response.success:
             raise LLMProviderError(response.error)

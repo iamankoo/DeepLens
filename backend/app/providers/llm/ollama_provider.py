@@ -1,6 +1,7 @@
 import ollama
 
 from app.core.config import settings
+from app.core.logger import logger
 from app.providers.llm.base import BaseLLMProvider
 from app.providers.llm.base_provider import BaseProvider
 from app.schemas.llm import LLMResponse
@@ -52,9 +53,10 @@ class OllamaProvider(BaseLLMProvider, BaseProvider):
         try:
             start = self.start_timer()
 
-            print(f"[Ollama] Model: {settings.OLLAMA_MODEL}")
-            print(f"[Ollama] Prompt length: {len(prompt)}")
-            print("[Ollama] Sending request...")
+            logger.debug(
+                "sending request to Ollama",
+                extra={"model": settings.OLLAMA_MODEL, "prompt_length": len(prompt)},
+            )
 
             response = self.client.chat(
                 model=settings.OLLAMA_MODEL,

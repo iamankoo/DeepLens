@@ -3,6 +3,8 @@ import time
 import requests
 import trafilatura
 
+from app.core.logger import logger
+
 
 class ContentExtractor:
 
@@ -14,7 +16,7 @@ class ContentExtractor:
         url: str,
     ) -> str | None:
 
-        print(f"    [ContentExtractor] Fetching: {url}")
+        logger.debug("fetching url", extra={"url": url})
         t0 = time.perf_counter()
 
         try:
@@ -27,19 +29,19 @@ class ContentExtractor:
             raw_html = response.text
         except requests.exceptions.Timeout:
             elapsed = time.perf_counter() - t0
-            print(f"    [ContentExtractor] TIMEOUT after {elapsed:.1f}s — skipping {url}")
+            logger.warning("fetch timed out — skipping", extra={"url": url, "elapsed_s": round(elapsed, 1)})
             return None
         except requests.exceptions.RequestException as e:
             elapsed = time.perf_counter() - t0
-            print(f"    [ContentExtractor] REQUEST ERROR after {elapsed:.1f}s: {e}")
+            logger.warning("request error", extra={"url": url, "elapsed_s": round(elapsed, 1), "error": str(e)})
             return None
         except Exception as e:
             elapsed = time.perf_counter() - t0
-            print(f"    [ContentExtractor] UNEXPECTED ERROR after {elapsed:.1f}s: {e}")
+            logger.error("unexpected error fetching url", extra={"url": url, "elapsed_s": round(elapsed, 1), "error": str(e)})
             return None
 
         elapsed_fetch = time.perf_counter() - t0
-        print(f"    [ContentExtractor] Fetched {len(raw_html)} chars in {elapsed_fetch:.2f}s")
+        logger.debug("fetched url", extra={"chars": len(raw_html), "elapsed_s": round(elapsed_fetch, 2)})
 
         t1 = time.perf_counter()
         try:
@@ -50,14 +52,14 @@ class ContentExtractor:
                 include_links=False,
             )
         except Exception as e:
-            print(f"    [ContentExtractor] trafilatura.extract ERROR: {e}")
+            logger.error("trafilatura.extract error", extra={"error": str(e)})
             return None
 
         elapsed_parse = time.perf_counter() - t1
         if text:
-            print(f"    [ContentExtractor] Extracted {len(text)} chars in {elapsed_parse:.2f}s")
+            logger.debug("extracted text", extra={"chars": len(text), "elapsed_s": round(elapsed_parse, 2)})
         else:
-            print(f"    [ContentExtractor] trafilatura returned None in {elapsed_parse:.2f}s — skipping")
+            logger.warning("trafilatura returned None — skipping", extra={"elapsed_s": round(elapsed_parse, 2)})
 
         return text
 
