@@ -1,7 +1,43 @@
 from app.agents.research_agent import research_agent
 from app.core.logger import logger
+from app.db.models.research_run import ResearchStatus
 from app.db.repositories.research_run_repository import research_run_repository
 from app.db.session import db_manager
+
+
+def handle_research_job_failure(job, connection, *exc_info) -> None:
+    """Registered as research_queue.enqueue(..., on_failure=...).
+
+    Covers the failure path run_research_job's own try/except can't:
+    if the worker process dies mid-job (crash, OOM, a forced restart —
+    all reproduced during development), the process is gone before its
+    except block ever runs, so the ResearchRun row is orphaned at
+    'running' forever. RQ's own maintenance detects this on the next
+    worker startup (AbandonedJobError, via StartedJobRegistry.cleanup())
+    and invokes this callback regardless of which worker process
+    performed the detection — see CLAUDE.md for the full trace.
+
+    Guarded by current status so this never overwrites a specific error
+    already recorded by run_research_job's own except block for a normal
+    in-process failure (both paths can fire for the same job)."""
+
+    research_id = job.args[0]
+
+    with db_manager.sync_session_factory() as db:
+        run = research_run_repository.get_sync(db, research_id=research_id)
+        if run is None or run.status not in (ResearchStatus.PENDING, ResearchStatus.RUNNING):
+            return
+
+        logger.error(
+            "research job abandoned or crashed outside its own exception handler",
+            extra={"research_id": research_id},
+        )
+        research_run_repository.mark_failed(
+            db,
+            research_id=research_id,
+            error="The research worker stopped unexpectedly before this run could finish "
+            "(process crash or restart). Please try again.",
+        )
 
 
 def run_research_job(research_id: str, query: str) -> str:

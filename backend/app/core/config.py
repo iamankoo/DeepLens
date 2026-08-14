@@ -37,6 +37,18 @@ class Settings(BaseSettings):
     # own, longer timeout rather than sharing the cloud providers' budget.
     OLLAMA_REQUEST_TIMEOUT_SECONDS: int = 180
 
+    # How long InferenceEngine skips a provider after classifying a failure
+    # from it (see app/providers/llm/health.py) — a provider's own stated
+    # retry delay is used instead when the error text includes one (e.g.
+    # Gemini's `retryDelay`), these are just the fallback when it doesn't.
+    # Quota exhaustion (daily caps) gets a long cooldown since it won't
+    # clear until the provider's own reset window; a bare rate limit is
+    # usually transient and clears quickly; a generic/connection failure
+    # sits in between.
+    PROVIDER_QUOTA_COOLDOWN_SECONDS: int = 3600
+    PROVIDER_RATE_LIMIT_COOLDOWN_SECONDS: int = 60
+    PROVIDER_UNAVAILABLE_COOLDOWN_SECONDS: int = 300
+
     # ---- Database (MySQL) ----
     DATABASE_URL: str = "mysql+aiomysql://root:password@localhost:3307/deeplens"
     DB_ECHO: bool = False

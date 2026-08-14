@@ -24,6 +24,9 @@ class ResearchRunRepository:
     async def get(self, db: AsyncSession, *, research_id: str) -> ResearchRun | None:
         return await db.get(ResearchRun, research_id)
 
+    def get_sync(self, db: Session, *, research_id: str) -> ResearchRun | None:
+        return db.get(ResearchRun, research_id)
+
     def create(
         self, db: Session, *, research_id: str, query: str, user_id: int | None = None
     ) -> ResearchRun:

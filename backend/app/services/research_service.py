@@ -3,7 +3,7 @@ from app.core.logger import logger
 from app.db.models.research_run import ResearchRun
 from app.db.repositories.research_run_repository import research_run_repository
 from app.db.session import db_manager
-from app.jobs.research_job import run_research_job
+from app.jobs.research_job import handle_research_job_failure, run_research_job
 from app.queue.connection import research_queue
 from app.schemas.research import ResearchRequest
 from app.utils.id_generator import generate_research_id
@@ -26,6 +26,12 @@ class ResearchService:
             request.query,
             job_id=research_id,
             job_timeout=settings.RESEARCH_JOB_TIMEOUT_SECONDS,
+            # Covers RQ-level failures run_research_job's own try/except can
+            # never see: a worker process crash/kill leaves the row stuck at
+            # 'running' forever unless something reconciles it — see
+            # handle_research_job_failure's docstring for the full trace.
+            on_failure=handle_research_job_failure,
+            on_stopped=handle_research_job_failure,
         )
 
         logger.info("DeepLens research queued", extra={"research_id": research_id})
