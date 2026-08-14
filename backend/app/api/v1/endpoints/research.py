@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import get_current_user_optional
+from app.api.v1.deps import get_current_user, get_current_user_optional
 from app.db.models.user import User
 from app.db.repositories.research_run_repository import research_run_repository
 from app.db.session import get_db
@@ -19,9 +19,16 @@ def create_research(request: ResearchRequest, current_user: User | None = Depend
 
 
 @router.get("/research", response_model=list[ResearchRunSummary])
-async def list_research(limit: int = 20, offset: int = 0, db: AsyncSession = Depends(get_db)):
+async def list_research(
+    limit: int = 20,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lists the current user's own research history. Anonymous (unauthenticated)
+    research runs have no owning user and are intentionally not listable here."""
 
-    return await research_run_repository.list_recent(db, limit=limit, offset=offset)
+    return await research_run_repository.list_recent(db, user_id=current_user.id, limit=limit, offset=offset)
 
 
 @router.get("/research/{research_id}", response_model=ResearchRunDetail)

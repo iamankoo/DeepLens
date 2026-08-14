@@ -9,9 +9,15 @@ from app.db.models.research_run import ResearchRun, ResearchStatus
 
 class ResearchRunRepository:
 
-    async def list_recent(self, db: AsyncSession, *, limit: int = 20, offset: int = 0) -> list[ResearchRun]:
+    async def list_recent(
+        self, db: AsyncSession, *, user_id: int, limit: int = 20, offset: int = 0
+    ) -> list[ResearchRun]:
         result = await db.execute(
-            select(ResearchRun).order_by(ResearchRun.created_at.desc()).limit(limit).offset(offset)
+            select(ResearchRun)
+            .where(ResearchRun.user_id == user_id)
+            .order_by(ResearchRun.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
         return list(result.scalars().all())
 
