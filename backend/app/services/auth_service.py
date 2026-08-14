@@ -31,14 +31,14 @@ GENERIC_EMAIL_SENT_MESSAGE = "If that email is registered, a message has been se
 
 class AuthService:
 
-    async def register(self, db: AsyncSession, *, email: str, password: str) -> User:
+    async def register(self, db: AsyncSession, *, email: str, password: str, name: str) -> User:
         existing = await user_repository.get_by_email(db, email=email)
         if existing is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
         # bcrypt hashing is CPU-bound (~100-300ms) — keep it off the event loop.
         hashed = await run_in_threadpool(hash_password, password)
-        user = await user_repository.create(db, email=email, hashed_password=hashed)
+        user = await user_repository.create(db, email=email, hashed_password=hashed, name=name)
 
         await self._send_verification_email(db, user=user)
         return user

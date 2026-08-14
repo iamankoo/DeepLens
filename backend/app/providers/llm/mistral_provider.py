@@ -12,7 +12,8 @@ class MistralProvider(BaseLLMProvider, BaseProvider):
 
     def __init__(self):
         self.client = Mistral(
-            api_key=settings.MISTRAL_API_KEY
+            api_key=settings.MISTRAL_API_KEY,
+            timeout_ms=settings.LLM_REQUEST_TIMEOUT_SECONDS * 1000,
         )
 
     def provider_name(self) -> str:

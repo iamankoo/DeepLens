@@ -15,6 +15,7 @@ export type LoginFormValues = z.infer<typeof loginSchema>;
 
 export const registerSchema = z
   .object({
+    name: z.string().min(1, "Name is required").max(100, "Name must be at most 100 characters"),
     email,
     password,
     confirmPassword: z.string().min(1, "Confirm your password"),

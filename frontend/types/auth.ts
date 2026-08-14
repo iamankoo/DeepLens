@@ -3,6 +3,7 @@ export type UserRole = "admin" | "user";
 export interface UserPublic {
   id: number;
   email: string;
+  name: string | null;
   role: UserRole;
   is_active: boolean;
   email_verified: boolean;
@@ -23,6 +24,7 @@ export interface LoginPayload {
 export interface RegisterPayload {
   email: string;
   password: string;
+  name: string;
 }
 
 export interface ForgotPasswordPayload {

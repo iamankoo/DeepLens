@@ -1,7 +1,7 @@
-from typing import Callable
+from collections.abc import Callable
 
-from app.workflows.workflow_manager import workflow_manager
 from app.core.logger import logger
+from app.workflows.workflow_manager import workflow_manager
 
 
 class ResearchAgent:

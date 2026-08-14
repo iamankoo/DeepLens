@@ -15,6 +15,7 @@ import { ResearchStatusBadge } from "@/components/research/status-badge";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useRecentResearch } from "@/hooks/use-research";
 import { formatRelativeTime } from "@/lib/format";
+import { displayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
 
 function greeting() {
@@ -67,7 +68,7 @@ export default function DashboardPage() {
           <div className="relative space-y-1.5">
             <p className="text-sm text-muted-foreground">
               {greeting()}
-              {user ? `, ${user.email.split("@")[0]}` : ""}
+              {user ? `, ${displayName(user)}` : ""}
             </p>
             <h1 className="text-2xl font-semibold tracking-tight text-balance">Welcome back to DeepLens</h1>
             <p className="text-sm text-muted-foreground">Here&apos;s what&apos;s happening with your research.</p>

@@ -24,6 +24,19 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5:7b"
 
+    # None of the LLM SDKs (groq/google-genai/mistralai/ollama) set a
+    # request timeout by default — a stalled connection to any one of them
+    # hangs forever and defeats InferenceEngine's provider failover, which
+    # only moves to the next provider once generate() actually returns.
+    # Reproduced live: a Groq call hung >12 minutes with zero response,
+    # blocking the whole research pipeline. Applied to every provider's
+    # HTTP client at construction time.
+    LLM_REQUEST_TIMEOUT_SECONDS: int = 60
+    # Ollama runs inference locally on CPU, which is legitimately much
+    # slower than a cloud API call for the same prompt length — gets its
+    # own, longer timeout rather than sharing the cloud providers' budget.
+    OLLAMA_REQUEST_TIMEOUT_SECONDS: int = 180
+
     # ---- Database (MySQL) ----
     DATABASE_URL: str = "mysql+aiomysql://root:password@localhost:3307/deeplens"
     DB_ECHO: bool = False
@@ -33,6 +46,14 @@ class Settings(BaseSettings):
     # ---- Redis / Task Queue ----
     REDIS_URL: str = "redis://localhost:6380/0"
     RESEARCH_QUEUE_NAME: str = "research"
+    # RQ's own default job timeout is 180s (rq.queue.Queue.DEFAULT_TIMEOUT) —
+    # far too short for this pipeline, which can legitimately run 10-15+
+    # minutes across multiple nodes and up to 3 reflection iterations.
+    # Reproduced live: a real run was killed by RQ with "Task exceeded
+    # maximum timeout value (180 seconds)" mid-pipeline. Always pass this
+    # explicitly to research_queue.enqueue(..., job_timeout=...) — never
+    # rely on RQ's default for this queue.
+    RESEARCH_JOB_TIMEOUT_SECONDS: int = 1800
 
     # ---- Security ----
     # No default on purpose: every environment must set its own signing key

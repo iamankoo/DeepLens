@@ -10,7 +10,8 @@ class OllamaProvider(BaseLLMProvider, BaseProvider):
 
     def __init__(self):
         self.client = ollama.Client(
-            host=settings.OLLAMA_BASE_URL
+            host=settings.OLLAMA_BASE_URL,
+            timeout=settings.OLLAMA_REQUEST_TIMEOUT_SECONDS,
         )
 
     def provider_name(self) -> str:

@@ -10,7 +10,8 @@ class GroqProvider(BaseLLMProvider, BaseProvider):
 
     def __init__(self):
         self.client = Groq(
-            api_key=settings.GROQ_API_KEY
+            api_key=settings.GROQ_API_KEY,
+            timeout=settings.LLM_REQUEST_TIMEOUT_SECONDS,
         )
 
     def provider_name(self) -> str:

@@ -1,4 +1,5 @@
 from google import genai
+from google.genai import types
 
 from app.core.config import settings
 from app.providers.llm.base import BaseLLMProvider
@@ -10,7 +11,10 @@ class GeminiProvider(BaseLLMProvider, BaseProvider):
 
     def __init__(self):
         self.client = genai.Client(
-            api_key=settings.GEMINI_API_KEY
+            api_key=settings.GEMINI_API_KEY,
+            http_options=types.HttpOptions(
+                timeout=settings.LLM_REQUEST_TIMEOUT_SECONDS * 1000
+            ),
         )
 
     def provider_name(self) -> str:

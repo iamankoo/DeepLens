@@ -15,15 +15,36 @@ export function RegisterForm() {
   const register = useRegister();
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { email: "", password: "", confirmPassword: "" },
+    defaultValues: { name: "", email: "", password: "", confirmPassword: "" },
   });
 
   return (
     <form
-      onSubmit={form.handleSubmit((values) => register.mutate({ email: values.email, password: values.password }))}
+      onSubmit={form.handleSubmit((values) =>
+        register.mutate({ name: values.name, email: values.email, password: values.password })
+      )}
       noValidate
     >
       <FieldGroup>
+        <Controller
+          name="name"
+          control={form.control}
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor={field.name}>Name</FieldLabel>
+              <Input
+                {...field}
+                id={field.name}
+                type="text"
+                autoComplete="name"
+                placeholder="Ada Lovelace"
+                aria-invalid={fieldState.invalid}
+              />
+              <FieldError errors={[fieldState.error]} />
+            </Field>
+          )}
+        />
+
         <Controller
           name="email"
           control={form.control}

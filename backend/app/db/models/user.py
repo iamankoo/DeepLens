@@ -19,6 +19,9 @@ class User(Base):
 
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Nullable: required on new registrations (see UserRegister) but existing
+    # rows predate this column and have no value to backfill.
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, values_callable=lambda e: [m.value for m in e], length=20),

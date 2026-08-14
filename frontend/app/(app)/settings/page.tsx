@@ -51,6 +51,7 @@ export default function SettingsPage() {
               </div>
             ) : (
               <>
+                <Row label="Name" value={user.name ?? "—"} />
                 <Row label="Email" value={user.email} />
                 <Row label="Role" value={<span className="capitalize">{user.role}</span>} />
                 <Row

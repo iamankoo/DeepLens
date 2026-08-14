@@ -8,6 +8,7 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { ChatComposer } from "@/components/research/chat-composer";
 import { useCreateResearch } from "@/hooks/use-research";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { displayName } from "@/lib/user";
 
 const EXAMPLES = [
   "Compare the safety profiles of mRNA and viral-vector vaccine platforms.",
@@ -42,7 +43,7 @@ export default function NewResearchPage() {
           </span>
           <div className="space-y-1.5">
             <h1 className="text-2xl font-semibold tracking-tight text-balance">
-              {user ? `What should DeepLens research, ${user.email.split("@")[0]}?` : "What should DeepLens research?"}
+              {user ? `What should DeepLens research, ${displayName(user)}?` : "What should DeepLens research?"}
             </h1>
             <p className="text-sm text-muted-foreground">
               Ask anything — DeepLens plans, searches, verifies, and cites its way to an answer.

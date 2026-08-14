@@ -1,3 +1,4 @@
+from app.core.config import settings
 from app.core.logger import logger
 from app.db.models.research_run import ResearchRun
 from app.db.repositories.research_run_repository import research_run_repository
@@ -19,7 +20,13 @@ class ResearchService:
                 db, research_id=research_id, query=request.query, user_id=user_id
             )
 
-        research_queue.enqueue(run_research_job, research_id, request.query, job_id=research_id)
+        research_queue.enqueue(
+            run_research_job,
+            research_id,
+            request.query,
+            job_id=research_id,
+            job_timeout=settings.RESEARCH_JOB_TIMEOUT_SECONDS,
+        )
 
         logger.info("DeepLens research queued", extra={"research_id": research_id})
 
