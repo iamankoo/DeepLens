@@ -14,8 +14,12 @@ def run_research_job(research_id: str, query: str) -> str:
 
     logger.info("research job started", extra={"research_id": research_id})
 
+    def on_step(step: str) -> None:
+        with db_manager.sync_session_factory() as db:
+            research_run_repository.update_step(db, research_id=research_id, step=step)
+
     try:
-        result = research_agent.run(query)
+        result = research_agent.run(query, on_step=on_step)
 
         quality_report = result.get("quality_report")
 

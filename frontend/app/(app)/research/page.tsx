@@ -30,7 +30,7 @@ export default function ResearchHistoryPage() {
     <>
       <SiteHeader title="History" />
 
-      <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-5 p-4 md:p-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full max-w-sm">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -41,7 +41,7 @@ export default function ResearchHistoryPage() {
               className="pl-8"
             />
           </div>
-          <Button render={<Link href="/research/new" />}>
+          <Button nativeButton={false} render={<Link href="/research/new" />}>
             <Plus />
             New research
           </Button>
@@ -56,12 +56,16 @@ export default function ResearchHistoryPage() {
                 ))}
               </div>
             ) : !filtered.length ? (
-              <div className="flex flex-col items-center gap-2 py-16 text-center">
-                <FileSearch className="size-8 text-muted-foreground" />
-                <p className="text-sm font-medium">{search ? "No matching research" : "No research yet"}</p>
-                <p className="text-sm text-muted-foreground">
-                  {search ? "Try a different search term." : "Start your first research to see it here."}
-                </p>
+              <div className="flex flex-col items-center gap-3 py-16 text-center">
+                <span className="flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+                  <FileSearch className="size-6" />
+                </span>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">{search ? "No matching research" : "No research yet"}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {search ? "Try a different search term." : "Start your first research to see it here."}
+                  </p>
+                </div>
               </div>
             ) : (
               <Table>
@@ -77,6 +81,8 @@ export default function ResearchHistoryPage() {
                   {filtered.map((run) => (
                     <TableRow
                       key={run.id}
+                      role="link"
+                      aria-label={`View research: ${run.query}`}
                       className="cursor-pointer"
                       tabIndex={0}
                       onClick={() => router.push(`/research/${run.id}`)}

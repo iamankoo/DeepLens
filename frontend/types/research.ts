@@ -5,6 +5,7 @@ export interface ResearchRunSummary {
   query: string;
   status: ResearchStatus;
   quality_score: number | null;
+  current_step: string | null;
   created_at: string;
   completed_at: string | null;
 }

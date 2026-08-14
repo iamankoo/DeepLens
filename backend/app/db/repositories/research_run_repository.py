@@ -42,6 +42,13 @@ class ResearchRunRepository:
         db.refresh(run)
         return run
 
+    def update_step(self, db: Session, *, research_id: str, step: str) -> None:
+        run = db.get(ResearchRun, research_id)
+        if run is None:
+            return
+        run.current_step = step
+        db.commit()
+
     def mark_completed(
         self,
         db: Session,

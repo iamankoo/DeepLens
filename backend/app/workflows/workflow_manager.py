@@ -1,3 +1,5 @@
+from typing import Callable
+
 from app.workflows.research_workflow import research_graph
 from app.core.logger import logger
 
@@ -7,7 +9,7 @@ class WorkflowManager:
     def __init__(self, max_iterations: int = 3):
         self.max_iterations = max_iterations
 
-    def run(self, query: str) -> dict:
+    def run(self, query: str, on_step: Callable[[str], None] | None = None) -> dict:
 
         logger.info("workflow initializing", extra={"query": query, "max_iterations": self.max_iterations})
 
@@ -32,8 +34,20 @@ class WorkflowManager:
         logger.info("state graph invoking")
 
         try:
+            # stream_mode=["updates", "values"] gives both which node just
+            # ran (for on_step progress reporting) and the fully-merged
+            # state after each step (so the final "values" chunk is exactly
+            # what graph.invoke() would have returned) — see CLAUDE.md for
+            # why this replaced a plain invoke() call.
+            final_state: dict | None = None
+            for mode, chunk in research_graph.stream(initial_state, stream_mode=["updates", "values"]):
+                if mode == "values":
+                    final_state = chunk
+                elif mode == "updates" and on_step:
+                    for node_name in chunk:
+                        on_step(node_name)
 
-            result = research_graph.invoke(initial_state)
+            result = final_state or {}
 
             logger.info(
                 "state graph finished",

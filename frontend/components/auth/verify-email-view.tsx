@@ -44,7 +44,7 @@ export function VerifyEmailView({ token }: { token: string | null }) {
       <div className="flex flex-col items-center gap-3 rounded-lg border bg-muted/40 p-6 text-center">
         <CheckCircle2 className="size-8 text-success" />
         <p className="text-sm text-foreground">Your email has been verified.</p>
-        <Button size="sm" render={<Link href="/login" />}>
+        <Button size="sm" nativeButton={false} render={<Link href="/login" />}>
           Continue to sign in
         </Button>
       </div>

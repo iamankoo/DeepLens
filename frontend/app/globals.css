@@ -147,8 +147,101 @@
   }
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at 15% 0%, color-mix(in oklch, var(--primary), transparent 92%), transparent 45%),
+      radial-gradient(circle at 100% 20%, color-mix(in oklch, var(--chart-2), transparent 94%), transparent 40%);
+    background-attachment: fixed;
   }
   html {
     @apply font-sans;
+  }
+  ::selection {
+    background-color: color-mix(in oklch, var(--primary), transparent 75%);
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    background-color: color-mix(in oklch, var(--card), transparent 30%);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  .card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px -12px color-mix(in oklch, var(--foreground), transparent 88%);
+  }
+}
+
+/*
+  highlight.js token colors mapped to the DeepLens design tokens instead of a
+  stock hljs theme, so code blocks stay visually consistent with the rest of
+  the app in both light and dark mode.
+*/
+.hljs {
+  color: var(--foreground);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-subst {
+  color: var(--chart-1);
+}
+.hljs-string,
+.hljs-doctag,
+.hljs-regexp,
+.hljs-addition {
+  color: var(--chart-3);
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--chart-4);
+}
+.hljs-title,
+.hljs-section,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--chart-2);
+  font-weight: 600;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type,
+.hljs-built_in {
+  color: var(--chart-5);
+}
+.hljs-deletion {
+  color: var(--destructive);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 700;
+}
+
+@media print {
+  [data-slot="sidebar-wrapper"] > [data-slot="sidebar"],
+  header,
+  [data-slot="sidebar-rail"] {
+    display: none !important;
+  }
+  [data-slot="sidebar-inset"] {
+    margin: 0 !important;
+  }
+  body {
+    background: white;
+    color: black;
   }
 }

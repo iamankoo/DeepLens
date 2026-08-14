@@ -15,7 +15,9 @@ export default function NotFound() {
           The page you&apos;re looking for doesn&apos;t exist or has moved.
         </p>
       </div>
-      <Button render={<Link href="/" />}>Back to DeepLens</Button>
+      <Button nativeButton={false} render={<Link href="/" />}>
+        Back to DeepLens
+      </Button>
     </div>
   );
 }

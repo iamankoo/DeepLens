@@ -12,6 +12,7 @@ class ResearchRunSummary(BaseModel):
     query: str
     status: ResearchStatus
     quality_score: float | None
+    current_step: str | None
     created_at: datetime
     completed_at: datetime | None
 

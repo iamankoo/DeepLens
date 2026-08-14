@@ -33,6 +33,12 @@ class ResearchRun(Base):
     quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     iteration: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Name of the LangGraph node most recently completed (e.g. "planner",
+    # "search", "writer") — lets the frontend show real staged progress
+    # instead of a generic spinner. Set via WorkflowManager's on_step
+    # callback while streaming the graph; not meaningful once the run is
+    # completed/failed (report/error are the source of truth then).
+    current_step: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
