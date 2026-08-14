@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from app.intelligence.evidence_level import (
     EvidenceLevel,
 )
-from app.search.schemas import SearchResult
 from app.search.chunk import SearchChunk
 
 

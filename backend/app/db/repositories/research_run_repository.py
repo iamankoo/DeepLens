@@ -86,5 +86,31 @@ class ResearchRunRepository:
         db.refresh(run)
         return run
 
+    def mark_orphaned_running_as_failed(self, db: Session, *, error: str) -> list[str]:
+        """A SimpleWorker processes exactly one job at a time — so at the
+        exact moment a worker process boots, it cannot possibly have any
+        job legitimately in flight yet. Any ResearchRun still 'running' at
+        that instant belongs to a *previous* worker process that died
+        without reaching its own except block (crash, OOM, force-kill).
+
+        This exists because RQ's own abandoned-job detection
+        (StartedJobRegistry.cleanup(), see handle_research_job_failure)
+        only fires once a job's *own* timeout budget has elapsed — with
+        RESEARCH_JOB_TIMEOUT_SECONDS=1800, that's up to 30 minutes of a
+        truly-dead job silently sitting at 'running' before RQ notices.
+        Reproduced live: a worker crash left a row stuck at 'running' with
+        RQ still reporting it as JobStatus.STARTED and not yet expired.
+        This check is immediate instead of dependent on that timeout."""
+
+        rows = db.execute(select(ResearchRun).where(ResearchRun.status == ResearchStatus.RUNNING)).scalars().all()
+        ids = [run.id for run in rows]
+        for run in rows:
+            run.status = ResearchStatus.FAILED
+            run.error = error
+            run.completed_at = datetime.now()
+        if rows:
+            db.commit()
+        return ids
+
 
 research_run_repository = ResearchRunRepository()

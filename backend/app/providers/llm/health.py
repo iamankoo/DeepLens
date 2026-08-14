@@ -184,7 +184,24 @@ class ProviderHealthTracker:
         all_health = self._read_all()
         health = all_health.get(provider_name, ProviderHealth())
         status = classify_error(error)
-        cooldown = extract_retry_delay_seconds(error) or self._cooldowns.get(status, 300)
+        default_cooldown = self._cooldowns.get(status, 300)
+
+        # A provider's own stated retry delay is authoritative when given
+        # (it knows its actual quota/rate-limit window). Otherwise, scale
+        # the category default by how reliable this provider has actually
+        # been: a single timeout on a provider with a strong track record
+        # (e.g. 88% success over 30+ calls) is far more likely a transient
+        # blip than a real outage, and a full 300s "unavailable" cooldown
+        # for it just wastes a good provider's availability for no reason.
+        # Reproduced live: Mistral sat at 88% success over 33 calls, still
+        # correctly excluded for a flat 5 minutes on one timeout.
+        stated_delay = extract_retry_delay_seconds(error)
+        if stated_delay is not None:
+            cooldown = stated_delay
+        elif health.total_calls >= 3 and health.success_rate >= 0.7:
+            cooldown = max(15.0, default_cooldown * (1 - health.success_rate))
+        else:
+            cooldown = default_cooldown
 
         health.status = status
         health.unavailable_until = time.time() + cooldown
@@ -203,6 +220,23 @@ class ProviderHealthTracker:
             },
         )
 
+    def reset(self, provider_name: str | None = None) -> None:
+        """Manually clears tracked health — one provider, or all of them if
+        omitted. Not called automatically on backend/worker restart: health
+        state is intentionally Redis-backed specifically so a real quota
+        exhaustion (which doesn't clear just because a process restarted)
+        keeps being respected across restarts instead of hammering a
+        provider that's still actually exhausted. Use this explicitly (e.g.
+        from a shell) if you know an underlying issue was fixed and want to
+        stop waiting out a cooldown."""
+
+        if provider_name is None:
+            redis_conn.delete(self.REDIS_KEY)
+            return
+        all_health = self._read_all()
+        all_health.pop(provider_name, None)
+        self._write_all(all_health)
+
     def ordered_candidates(self, provider_names: list[str]) -> list[str]:
         """Available providers only, prioritized by recent success rate then
         latency — an untested provider (success_rate defaults to 1.0) is
@@ -218,6 +252,34 @@ class ProviderHealthTracker:
                 all_health[name].average_latency_ms if name in all_health else 0.0,
             ),
         )
+
+    def describe(self, provider_names: list[str]) -> list[dict]:
+        """Per-provider diagnostic info for every name given, including ones
+        never attempted yet (unlike snapshot(), which only reports providers
+        that already exist as Redis entries) — used to log a complete
+        picture before every inference attempt and before ever returning
+        the all-unavailable failure, not just the ones already tracked."""
+
+        all_health = self._read_all()
+        described = []
+        for name in provider_names:
+            health = all_health.get(name)
+            if health is None:
+                described.append(
+                    {"provider": name, "available": True, "in_cooldown": False, "cooldown_remaining_s": 0.0, "reason": "-"}
+                )
+                continue
+            remaining = max(0.0, health.unavailable_until - time.time()) if health.unavailable_until else 0.0
+            described.append(
+                {
+                    "provider": name,
+                    "available": health.is_available(),
+                    "in_cooldown": not health.is_available(),
+                    "cooldown_remaining_s": round(remaining, 1),
+                    "reason": health.last_error or "-",
+                }
+            )
+        return described
 
     def snapshot(self) -> dict:
         all_health = self._read_all()
@@ -235,6 +297,29 @@ class ProviderHealthTracker:
             }
             for name, health in all_health.items()
         }
+
+
+def format_provider_report(described: list[dict]) -> str:
+    """Renders describe()'s output as the human-readable block logged
+    before every inference attempt and before the all-unavailable failure:
+
+        Provider: groq
+        Available: Yes
+        Cooldown: No
+        Reason: -
+    """
+
+    lines = []
+    for entry in described:
+        lines.append(f"Provider: {entry['provider']}")
+        lines.append(f"Available: {'Yes' if entry['available'] else 'No'}")
+        cooldown = (
+            f"Yes (expires in {entry['cooldown_remaining_s']:.0f}s)" if entry["in_cooldown"] else "No"
+        )
+        lines.append(f"Cooldown: {cooldown}")
+        lines.append(f"Reason: {entry['reason'][:200] if entry['reason'] != '-' else '-'}")
+        lines.append("")
+    return "\n".join(lines)
 
 
 provider_health = ProviderHealthTracker(

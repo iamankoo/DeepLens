@@ -1,5 +1,6 @@
 import chromadb
 
+from app.core.config import settings
 from app.memory.memory_schema import MemoryRecord
 from app.memory.providers.sentence_transformer_provider import (
     sentence_transformer_provider,
@@ -10,7 +11,7 @@ class ChromaStore:
 
     def __init__(self):
         try:
-            self.client = chromadb.PersistentClient(path="./chroma_db")
+            self.client = chromadb.PersistentClient(path=settings.CHROMA_PERSIST_DIRECTORY)
             self.collection = self.client.get_or_create_collection(
                 name="research_memory"
             )

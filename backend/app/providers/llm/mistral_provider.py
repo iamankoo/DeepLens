@@ -1,5 +1,3 @@
-import time
-
 from mistralai import Mistral
 
 from app.core.config import settings

@@ -39,7 +39,7 @@ class LLMManager:
 
             return response
 
-        except Exception as e:
+        except Exception:
             elapsed = time.perf_counter() - start
             print(f"[LLMManager] FAILED after {elapsed:.2f}s")
             print(traceback.format_exc())

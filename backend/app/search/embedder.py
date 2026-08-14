@@ -1,7 +1,5 @@
 import time
 
-import numpy as np
-
 from app.memory.providers.sentence_transformer_provider import (
     sentence_transformer_provider,
 )

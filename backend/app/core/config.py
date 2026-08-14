@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     PROVIDER_RATE_LIMIT_COOLDOWN_SECONDS: int = 60
     PROVIDER_UNAVAILABLE_COOLDOWN_SECONDS: int = 300
 
+    # ---- Vector memory (ChromaDB) ----
+    CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"
+
     # ---- Database (MySQL) ----
     DATABASE_URL: str = "mysql+aiomysql://root:password@localhost:3307/deeplens"
     DB_ECHO: bool = False

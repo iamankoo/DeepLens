@@ -2,13 +2,29 @@ import time
 import traceback
 
 from app.core.logger import logger
-from app.providers.llm.health import provider_health
+from app.providers.llm.health import format_provider_report, provider_health
 from app.providers.llm.registry import provider_registry
 from app.schemas.llm import LLMResponse
 
 ALL_PROVIDERS_UNAVAILABLE_MESSAGE = "All configured LLM providers are currently unavailable."
 
 DEFAULT_PROVIDER_ORDER = ["groq", "gemini", "mistral", "ollama"]
+
+
+def _unavailable_response(preferred_providers: list[str]) -> LLMResponse:
+    described = provider_health.describe(preferred_providers)
+    logger.error(
+        "no LLM provider succeeded — returning all-unavailable\n" + format_provider_report(described)
+    )
+    return LLMResponse(
+        provider="none",
+        model="unknown",
+        content="",
+        success=False,
+        latency_ms=0.0,
+        error=ALL_PROVIDERS_UNAVAILABLE_MESSAGE,
+        metadata={"provider_health": provider_health.snapshot()},
+    )
 
 
 class InferenceEngine:
@@ -28,6 +44,13 @@ class InferenceEngine:
         if preferred_providers is None:
             preferred_providers = DEFAULT_PROVIDER_ORDER
 
+        # Log every configured provider's real-time status *before* deciding
+        # anything, not just the ones that end up as candidates — this is
+        # the exact picture needed to answer "why did provider X get
+        # skipped" without guessing.
+        described = provider_health.describe(preferred_providers)
+        logger.info("provider status before inference\n" + format_provider_report(described))
+
         # Skip providers already known-bad this session (quota/rate-limit/
         # unavailable, per provider_health's cooldown) and try the rest in
         # order of recent success rate rather than the fixed default order —
@@ -44,19 +67,7 @@ class InferenceEngine:
         print("========================================================")
 
         if not candidates:
-            logger.error(
-                "no LLM provider candidates available — all in cooldown",
-                extra={"configured_providers": preferred_providers, "health": provider_health.snapshot()},
-            )
-            return LLMResponse(
-                provider="none",
-                model="unknown",
-                content="",
-                success=False,
-                latency_ms=0.0,
-                error=ALL_PROVIDERS_UNAVAILABLE_MESSAGE,
-                metadata={"provider_health": provider_health.snapshot()},
-            )
+            return _unavailable_response(preferred_providers)
 
         last_response: LLMResponse | None = None
 
@@ -81,12 +92,15 @@ class InferenceEngine:
             if not available:
                 continue
 
+            start = time.perf_counter()
             try:
 
                 print(f"[InferenceEngine] Calling {provider_name}.generate()")
 
-                start = time.perf_counter()
-
+                # This is a real generation call, not a cheap availability
+                # probe — is_available() above only checks the provider is
+                # configured/reachable; success/failure of the actual model
+                # response is what health tracking and failover are based on.
                 response = provider.generate(
                     prompt=prompt,
                     system_prompt=system_prompt,
@@ -111,24 +125,38 @@ class InferenceEngine:
 
             except Exception as e:
 
+                elapsed_ms = (time.perf_counter() - start) * 1000
                 print(f"[InferenceEngine] {provider_name} crashed")
                 print(traceback.format_exc())
                 provider_health.record_failure(provider_name, str(e))
+                # Bug fixed here: this branch used to record the failure but
+                # never set last_response, so a provider that raised (rather
+                # than returning a clean success=False LLMResponse) had its
+                # specific error silently discarded — every remaining
+                # candidate failing this way produced the generic
+                # all-unavailable message even though a real, specific error
+                # was available and already logged above.
+                last_response = LLMResponse(
+                    provider=provider_name,
+                    model="unknown",
+                    content="",
+                    success=False,
+                    latency_ms=elapsed_ms,
+                    error=str(e),
+                    metadata={},
+                )
 
         print("\n[InferenceEngine] No provider succeeded.")
 
         if last_response:
+            logger.error(
+                "no LLM provider succeeded — returning last provider's specific error\n"
+                + format_provider_report(provider_health.describe(preferred_providers)),
+                extra={"final_provider": last_response.provider, "final_error": last_response.error},
+            )
             return last_response
 
-        return LLMResponse(
-            provider="none",
-            model="unknown",
-            content="",
-            success=False,
-            latency_ms=0.0,
-            error=ALL_PROVIDERS_UNAVAILABLE_MESSAGE,
-            metadata={"provider_health": provider_health.snapshot()},
-        )
+        return _unavailable_response(preferred_providers)
 
 
 inference_engine = InferenceEngine()
