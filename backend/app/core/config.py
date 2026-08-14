@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     # ---- Frontend ----
     # Used to build links (password reset, email verification) sent by email.
     FRONTEND_URL: str = "http://localhost:3000"
+    # Comma-separated list of origins allowed to call the API from a browser
+    # (CORS). Defaults to the local Next.js dev server; add production
+    # frontend origins here, don't widen this to "*" once cookies/credentials
+    # are ever introduced.
+    CORS_ORIGINS: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -72,6 +77,10 @@ class Settings(BaseSettings):
         code, run in an RQ worker process rather than on the request
         thread) use this `pymysql`-backed equivalent instead."""
         return self.DATABASE_URL.replace("+aiomysql", "+pymysql")
+
+    @property
+    def CORS_ORIGINS_LIST(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
 
 settings = Settings()
