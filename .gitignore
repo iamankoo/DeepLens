@@ -10,8 +10,14 @@ venv/
 .venv/
 env/
 
-# Environment Variables
+# Environment Variables — every real env file, in any directory; only the
+# checked-in .example templates are allowed through.
 .env
+.env.*
+!.env.example
+
+# Internal/local project notes — never pushed to the remote.
+CLAUDE.md
 
 # IDE
 .vscode/
