@@ -12,11 +12,24 @@ class ChromaStore:
 
     def __init__(self):
         try:
-            self.client = chromadb.PersistentClient(path=settings.CHROMA_PERSIST_DIRECTORY)
+            if settings.CHROMA_API_KEY:
+                # Production: Chroma Cloud. A hosted collection is reachable
+                # from both the API and worker services (unlike local disk,
+                # which is neither shared between services nor guaranteed to
+                # survive a redeploy).
+                self.client = chromadb.CloudClient(
+                    tenant=settings.CHROMA_TENANT,
+                    database=settings.CHROMA_DATABASE,
+                    api_key=settings.CHROMA_API_KEY,
+                )
+                logger.debug("ChromaStore initialized", extra={"mode": "cloud", "tenant": settings.CHROMA_TENANT})
+            else:
+                # Local development: on-disk store, no credentials needed.
+                self.client = chromadb.PersistentClient(path=settings.CHROMA_PERSIST_DIRECTORY)
+                logger.debug("ChromaStore initialized", extra={"mode": "local", "path": settings.CHROMA_PERSIST_DIRECTORY})
             self.collection = self.client.get_or_create_collection(
                 name="research_memory"
             )
-            logger.debug("ChromaStore initialized", extra={"path": settings.CHROMA_PERSIST_DIRECTORY})
         except Exception as e:
             logger.error("ChromaStore failed to initialize — long-term memory disabled", extra={"error": str(e)})
             self.client = None

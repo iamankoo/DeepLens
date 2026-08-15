@@ -1,3 +1,4 @@
+from app.core.config import settings
 from app.core.logger import logger
 from app.providers.llm.gemini_provider import GeminiProvider
 from app.providers.llm.groq_provider import GroqProvider
@@ -23,6 +24,13 @@ class ProviderRegistry:
         # misconfigured .env is visible immediately instead of only
         # surfacing as a mysterious failure during a research run.
         for name, provider in self.providers.items():
+            # Ollama's is_available() is a live reachability probe against
+            # OLLAMA_BASE_URL — skip it when disabled (production default)
+            # so boot never attempts to reach a local Ollama server that
+            # doesn't exist there. The provider stays registered either way.
+            if name == "ollama" and not settings.ENABLE_OLLAMA:
+                logger.info(f"LLM provider registered: {name} (is_available=skipped, ENABLE_OLLAMA=False)")
+                continue
             try:
                 available = provider.is_available()
             except Exception as e:

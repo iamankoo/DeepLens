@@ -1,6 +1,7 @@
 import time
 import traceback
 
+from app.core.config import settings
 from app.core.logger import logger
 from app.providers.llm.health import format_provider_report, provider_health
 from app.providers.llm.registry import provider_registry
@@ -10,8 +11,13 @@ ALL_PROVIDERS_UNAVAILABLE_MESSAGE = "All configured LLM providers are currently 
 
 # Mandatory fallback priority (V1 requirement) — do not reorder. A provider
 # is only skipped if it's in cooldown (see provider_health) or its call
-# fails; the next one is always tried in this exact sequence.
-DEFAULT_PROVIDER_ORDER = ["groq", "mistral", "ollama", "gemini"]
+# fails; the next one is always tried in this exact sequence. Ollama is
+# included only when settings.ENABLE_OLLAMA is True (the local-dev default);
+# production sets it False since there's no reachable local Ollama server,
+# giving Groq -> Mistral -> Gemini instead of attempting an unreachable host.
+DEFAULT_PROVIDER_ORDER = [
+    p for p in ["groq", "mistral", "ollama", "gemini"] if p != "ollama" or settings.ENABLE_OLLAMA
+]
 
 
 def _unavailable_response(preferred_providers: list[str]) -> LLMResponse:

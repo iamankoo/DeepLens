@@ -6,7 +6,10 @@ class Settings(BaseSettings):
     # ---- Application ----
     APP_NAME: str = "DeepLens API"
     APP_VERSION: str = "0.2.0-beta"
-    DEBUG: bool = True
+    # Fail-safe default is False (quieter, production-appropriate logging).
+    # Local development's own .env explicitly sets this True, so this only
+    # changes behavior for a deployment that forgets to set DEBUG at all.
+    DEBUG: bool = False
 
     # ---- Search ----
     TAVILY_API_KEY: str
@@ -23,6 +26,13 @@ class Settings(BaseSettings):
 
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5:7b"
+    # Ollama needs a reachable local model runtime, which is real for local
+    # development but doesn't exist on typical production hosts (no
+    # persistent local Ollama server). Defaults to True so local dev is
+    # unaffected; production deployments should explicitly set this False so
+    # the fallback chain is Groq -> Mistral -> Gemini, never attempting a
+    # local Ollama call that has nothing to connect to.
+    ENABLE_OLLAMA: bool = True
 
     # None of the LLM SDKs (groq/google-genai/mistralai/ollama) set a
     # request timeout by default — a stalled connection to any one of them
@@ -51,6 +61,14 @@ class Settings(BaseSettings):
 
     # ---- Vector memory (ChromaDB) ----
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"
+    # Chroma Cloud (production): when CHROMA_API_KEY is set, ChromaStore
+    # connects to Chroma Cloud instead of the local on-disk PersistentClient
+    # above — local filesystem storage doesn't survive a redeploy and isn't
+    # shared between the API and worker services. Left empty by default so
+    # local development is completely unaffected.
+    CHROMA_API_KEY: str = ""
+    CHROMA_TENANT: str = ""
+    CHROMA_DATABASE: str = ""
 
     # ---- Database (MySQL) ----
     DATABASE_URL: str = "mysql+aiomysql://root:password@localhost:3307/deeplens"
