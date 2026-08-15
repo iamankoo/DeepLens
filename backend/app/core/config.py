@@ -1,4 +1,11 @@
+import re
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Matches the scheme of a MySQL SQLAlchemy URL, with or without a DB-API
+# driver suffix (e.g. "mysql://", "mysql+pymysql://", "mysql+aiomysql://").
+_MYSQL_SCHEME_RE = re.compile(r"^mysql(\+\w+)?://")
 
 
 class Settings(BaseSettings):
@@ -76,6 +83,19 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
 
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def _force_async_driver(cls, v: str) -> str:
+        """Some MySQL hosts (e.g. Railway's MySQL plugin) hand out a bare
+        `mysql://` URL with no DB-API driver in the scheme. create_async_engine
+        needs an explicit async driver — without one it silently falls back
+        to the sync `mysqldb` (mysqlclient) dialect, which isn't installed
+        and isn't async-capable, crashing on startup with
+        `ModuleNotFoundError: No module named 'MySQLdb'`. Normalize here so
+        DATABASE_URL is always usable with create_async_engine regardless of
+        which driver (if any) the source URL specified."""
+        return _MYSQL_SCHEME_RE.sub("mysql+aiomysql://", v, count=1)
+
     # ---- Redis / Task Queue ----
     REDIS_URL: str = "redis://localhost:6380/0"
     RESEARCH_QUEUE_NAME: str = "research"
@@ -134,8 +154,11 @@ class Settings(BaseSettings):
         """The app runs on the async `aiomysql` driver; Alembic and the
         research pipeline worker (agents/workflows/nodes.py — synchronous
         code, run in an RQ worker process rather than on the request
-        thread) use this `pymysql`-backed equivalent instead."""
-        return self.DATABASE_URL.replace("+aiomysql", "+pymysql")
+        thread) use this `pymysql`-backed equivalent instead. Derived by
+        re-normalizing the scheme (not a literal "+aiomysql" substring
+        replace) so it's correct even if DATABASE_URL's validator above
+        had to rewrite the driver from something else."""
+        return _MYSQL_SCHEME_RE.sub("mysql+pymysql://", self.DATABASE_URL, count=1)
 
     @property
     def CORS_ORIGINS_LIST(self) -> list[str]:
