@@ -1,3 +1,17 @@
+# Debian slim's system sqlite3 (< 3.35.0) is too old for chromadb, which
+# refuses to import at all otherwise. pysqlite3-binary bundles a modern
+# sqlite3 build; swapping it into sys.modules before `import chromadb` is
+# chromadb's own documented workaround (https://docs.trychroma.com/troubleshooting#sqlite).
+# Only ships prebuilt wheels for manylinux (the Docker/Railway target) — on
+# platforms without it (e.g. local Windows dev), the platform's own sqlite3
+# is already new enough, so falling back to it is correct, not a compromise.
+try:
+    import sys
+
+    sys.modules["sqlite3"] = __import__("pysqlite3")
+except ImportError:
+    pass
+
 import chromadb
 
 from app.core.config import settings
