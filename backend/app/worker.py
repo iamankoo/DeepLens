@@ -14,19 +14,31 @@ from app.queue.connection import redis_conn, research_queue
 # Importing research_job above pulls in its full dependency chain
 # (app.agents.research_agent -> app.workflows.workflow_manager ->
 # research_workflow -> nodes.py), which is what instantiates the module-level
-# embedding/cross-encoder model singletons (app/search/embedder.py,
-# app/search/cross_encoder.py). Doing that import here, at worker startup in
-# this long-lived parent process — rather than letting it happen lazily the
-# first time a job runs — matters specifically because RQ's (non-Windows)
-# Worker forks a brand-new child process ("work-horse") per job: without this,
-# every single job independently loaded its own fresh copy of both transformer
-# models inside the forked child, on top of that job's own concurrent page
-# downloads, in an already memory-tight ~1GB production container. Loading
-# them once here means every forked work-horse inherits the already-loaded
-# weights via the OS's ordinary copy-on-write fork semantics instead of
-# reloading its own copy — reproduced live in production logs as "Loading
-# weights" appearing fresh inside every job's work-horse right as Chunking
-# Node's own memory-heavy work was also ramping up.
+# embedding-model singleton (app/search/embedder.py's SentenceTransformer,
+# used immediately by chunking_node right after a source is downloaded).
+# Doing that import here, at worker startup in this long-lived parent
+# process — rather than letting it happen lazily the first time a job runs —
+# matters specifically because RQ's (non-Windows) Worker forks a brand-new
+# child process ("work-horse") per job: without this, every single job
+# independently loaded its own fresh copy of that transformer model inside
+# the forked child, on top of that job's own concurrent page downloads, in
+# an already memory-tight ~1GB production container. Loading it once here
+# means every forked work-horse inherits the already-loaded weights via the
+# OS's ordinary copy-on-write fork semantics instead of reloading its own
+# copy — reproduced live in production logs as "Loading weights" appearing
+# fresh inside every job's work-horse right as Chunking Node's own
+# memory-heavy work was also ramping up.
+#
+# The cross-encoder model (app/search/cross_encoder.py) is deliberately NOT
+# preloaded here despite being pulled in by the same import chain — it's
+# lazy-loaded on first actual use (see CrossEncoderRanker.model), because it
+# isn't needed until retrieval_node, which runs after chunking_node. Even
+# after the above fix plus tightening Chunking's own concurrency/content caps
+# (see Settings.EXTRACTION_WORKERS et al.), production still reproduced the
+# same OOM within seconds of entering Chunking, with memory metrics showing
+# the container at its full ~1GB limit — evidence the cross-encoder's
+# resident weights during Chunking's own peak-memory window were part of the
+# remaining shortfall despite not being used anywhere near it.
 
 
 def _patch_registry_death_penalty_for_windows():
