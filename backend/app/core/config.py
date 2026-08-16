@@ -117,12 +117,24 @@ class Settings(BaseSettings):
     # that container; conservative enough there, generous enough not to
     # change local dev behavior meaningfully (this dev machine is also
     # memory-constrained per CLAUDE.md, so lower concurrency helps there too).
-    EXTRACTION_WORKERS: int = 2
-    MAX_SOURCES_FOR_CHUNKING: int = 8
+    #
+    # First pass (EXTRACTION_WORKERS=2, MAX_SOURCE_CONTENT_CHARS=20000, model
+    # preloading in app/worker.py) measurably helped — peak worker memory
+    # dropped from ~98.5% to ~92% of the container limit — but two more
+    # SIGKILLs still reproduced live in production immediately after that
+    # deploy, both again mid-Chunking. That's direct evidence the ~1GB
+    # container's baseline (torch + transformers + langgraph + chromadb + two
+    # preloaded local models, all resident before any job-specific work even
+    # starts) leaves too little headroom for the first pass's job-specific
+    # allowance alone. Tightened further here rather than raising the
+    # container's memory limit, per the fix priority this was built against:
+    # reduce concurrency and source volume before reaching for more memory.
+    EXTRACTION_WORKERS: int = 1
+    MAX_SOURCES_FOR_CHUNKING: int = 5
     # Caps extracted text per source before it flows into chunking/embedding —
     # a handful of oversized pages (long-form articles, PDF-derived dumps)
     # downloaded concurrently was part of the peak-memory spike.
-    MAX_SOURCE_CONTENT_CHARS: int = 20000
+    MAX_SOURCE_CONTENT_CHARS: int = 12000
 
     # ---- Security ----
     # No default on purpose: every environment must set its own signing key
