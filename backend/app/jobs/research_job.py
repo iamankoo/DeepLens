@@ -6,20 +6,29 @@ from app.db.session import db_manager
 
 
 def handle_research_job_failure(job, connection, *exc_info) -> None:
-    """Registered as research_queue.enqueue(..., on_failure=...).
+    """Registered as research_queue.enqueue(..., on_failure=..., on_stopped=...)
+    AND called directly by app/worker.py's _handle_work_horse_killed.
 
-    Covers the failure path run_research_job's own try/except can't:
+    Covers the failure paths run_research_job's own try/except can't:
     if the worker process dies mid-job (crash, OOM, a forced restart —
     all reproduced during development), the process is gone before its
     except block ever runs, so the ResearchRun row is orphaned at
-    'running' forever. RQ's own maintenance detects this on the next
-    worker startup (AbandonedJobError, via StartedJobRegistry.cleanup())
-    and invokes this callback regardless of which worker process
-    performed the detection.
+    'running' forever. Two independent things call this for that case:
+    (1) app/worker.py's work_horse_killed_handler, immediately, the instant
+    the parent worker process detects a forked work-horse died unexpectedly
+    (the common production case — reproduced live as a container OOM/SIGKILL
+    mid-Chunking-Node); and (2) RQ's own AbandonedJobError sweep
+    (StartedJobRegistry.cleanup()), as a slower fallback for cases (1) can't
+    cover — e.g. the parent worker process itself dying — which only fires
+    once a job's full timeout budget has elapsed, or at the next worker
+    startup (see _reconcile_orphaned_runs, a third, DB-side independent
+    check for that same startup case).
 
     Guarded by current status so this never overwrites a specific error
     already recorded by run_research_job's own except block for a normal
-    in-process failure (both paths can fire for the same job)."""
+    in-process failure, and so a job already reconciled by one of the paths
+    above is never double-processed by another (all can fire for the same
+    job)."""
 
     research_id = job.args[0]
 

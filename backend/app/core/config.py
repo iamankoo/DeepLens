@@ -108,6 +108,22 @@ class Settings(BaseSettings):
     # rely on RQ's default for this queue.
     RESEARCH_JOB_TIMEOUT_SECONDS: int = 1800
 
+    # ---- Research pipeline resource limits ----
+    # Chunking Node (app/workflows/nodes.py) downloads full source pages in
+    # parallel and runs local embedding/cross-encoder models, all inside the
+    # RQ work-horse process. Reproduced live in production: the work-horse
+    # was SIGKILLed (OOM) immediately after Ranking, mid-Chunking, on a
+    # worker container with a ~1GB memory limit. These bound peak memory for
+    # that container; conservative enough there, generous enough not to
+    # change local dev behavior meaningfully (this dev machine is also
+    # memory-constrained per CLAUDE.md, so lower concurrency helps there too).
+    EXTRACTION_WORKERS: int = 2
+    MAX_SOURCES_FOR_CHUNKING: int = 8
+    # Caps extracted text per source before it flows into chunking/embedding —
+    # a handful of oversized pages (long-form articles, PDF-derived dumps)
+    # downloaded concurrently was part of the peak-memory spike.
+    MAX_SOURCE_CONTENT_CHARS: int = 20000
+
     # ---- Security ----
     # No default on purpose: every environment must set its own signing key
     # rather than silently inherit one, the same way TAVILY/GEMINI keys work.

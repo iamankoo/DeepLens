@@ -8,7 +8,25 @@ from rq.worker import SimpleWorker
 from app.core.logger import logger
 from app.db.repositories.research_run_repository import research_run_repository
 from app.db.session import db_manager
+from app.jobs.research_job import handle_research_job_failure
 from app.queue.connection import redis_conn, research_queue
+
+# Importing research_job above pulls in its full dependency chain
+# (app.agents.research_agent -> app.workflows.workflow_manager ->
+# research_workflow -> nodes.py), which is what instantiates the module-level
+# embedding/cross-encoder model singletons (app/search/embedder.py,
+# app/search/cross_encoder.py). Doing that import here, at worker startup in
+# this long-lived parent process — rather than letting it happen lazily the
+# first time a job runs — matters specifically because RQ's (non-Windows)
+# Worker forks a brand-new child process ("work-horse") per job: without this,
+# every single job independently loaded its own fresh copy of both transformer
+# models inside the forked child, on top of that job's own concurrent page
+# downloads, in an already memory-tight ~1GB production container. Loading
+# them once here means every forked work-horse inherits the already-loaded
+# weights via the OS's ordinary copy-on-write fork semantics instead of
+# reloading its own copy — reproduced live in production logs as "Loading
+# weights" appearing fresh inside every job's work-horse right as Chunking
+# Node's own memory-heavy work was also ramping up.
 
 
 def _patch_registry_death_penalty_for_windows():
@@ -49,6 +67,33 @@ def _reconcile_orphaned_runs():
         )
 
 
+def _handle_work_horse_killed(job, retpid, ret_val, rusage) -> None:
+    """Registered as Worker(..., work_horse_killed_handler=...) — RQ's own
+    extension point for exactly this scenario (rq/worker/worker_classes.py,
+    BaseWorker.monitor_work_horse): it runs synchronously, in this
+    still-alive parent process, the instant os.waitpid() confirms the forked
+    work-horse child died from an unhandled cause — a crash or, as
+    reproduced in production, the container OOM-killing it with SIGKILL
+    mid-Chunking-Node.
+
+    This is NOT reached by on_failure/on_stopped (registered at enqueue time
+    in research_service.py, handled by handle_research_job_failure below):
+    RQ's own handle_job_failure — called immediately alongside this hook for
+    a killed work-horse — only updates RQ/Redis-side bookkeeping
+    (FailedJobRegistry, Result) for that path; Job._handle_failure() never
+    calls execute_failure_callback there (confirmed from rq's own source,
+    job.py). That gap is exactly why a killed work-horse's ResearchRun
+    stayed at 'running' forever in production: nothing updated it until a
+    future worker restart's _reconcile_orphaned_runs(), or RQ's own
+    AbandonedJobError sweep — which only fires once the job's full
+    RESEARCH_JOB_TIMEOUT_SECONDS budget has elapsed. Reusing
+    handle_research_job_failure here (same guard against ever overwriting a
+    run that already finished normally) gives a killed work-horse the exact
+    same ResearchRun -> FAILED treatment, just immediately instead of
+    minutes-to-never later."""
+    handle_research_job_failure(job, redis_conn)
+
+
 def main():
     # RQ's default Worker forks a child process per job (os.fork), which
     # doesn't exist on Windows and silently never dequeues anything there —
@@ -73,7 +118,15 @@ def main():
 
     _reconcile_orphaned_runs()
 
-    worker = worker_cls([research_queue], connection=redis_conn)
+    # work_horse_killed_handler is a no-op under SimpleWorker (it never forks
+    # a work-horse to begin with — see the platform branch above) but is
+    # harmless to pass either way; kept unconditional so this isn't something
+    # a future edit could silently drop for one platform.
+    worker = worker_cls(
+        [research_queue],
+        connection=redis_conn,
+        work_horse_killed_handler=_handle_work_horse_killed,
+    )
     worker.work()
 
 

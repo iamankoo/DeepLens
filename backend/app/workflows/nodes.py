@@ -24,6 +24,7 @@ from app.agents.source_ranker import source_ranker
 from app.agents.writer_agent import writer_agent
 from app.agents.reflection_agent import reflection_agent
 
+from app.core.config import settings
 from app.core.logger import logger
 from app.memory.manager import memory_manager
 from app.memory.memory_schema import MemoryRecord
@@ -44,14 +45,17 @@ from app.rewrite.agent import rewrite_agent
 from app.citations.injector import citation_injector
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Tuning constants
+# Tuning constants — sourced from Settings (app/core/config.py) so production's
+# ~1GB worker container can run a more conservative profile than local dev
+# without a code change; see the "Research pipeline resource limits" section
+# there for why these exist.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Cap how many sources we download during chunking (performance guard)
-MAX_SOURCES_FOR_CHUNKING = 8
+MAX_SOURCES_FOR_CHUNKING = settings.MAX_SOURCES_FOR_CHUNKING
 
 # Max parallel threads for URL extraction
-EXTRACTION_WORKERS = 4
+EXTRACTION_WORKERS = settings.EXTRACTION_WORKERS
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -242,6 +246,13 @@ def _extract_and_chunk_source(source, idx: int, total: int):
     if not text:
         logger.debug(f"source {idx}: extraction returned empty — skipping")
         return []
+
+    if len(text) > settings.MAX_SOURCE_CONTENT_CHARS:
+        logger.debug(
+            f"source {idx}: extracted text truncated",
+            extra={"original_chars": len(text), "cap": settings.MAX_SOURCE_CONTENT_CHARS},
+        )
+        text = text[: settings.MAX_SOURCE_CONTENT_CHARS]
 
     logger.debug(
         f"source {idx}: extracted",
