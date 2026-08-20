@@ -41,4 +41,15 @@ class ResearchRun(Base):
     current_step: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    # Set when the RQ worker actually begins executing this run (mark_running),
+    # distinct from created_at (when it was enqueued) — a run can legitimately
+    # sit queued for a while behind an earlier job on a single worker before
+    # its own execution ever starts. Staleness reconciliation
+    # (research_run_repository._reconcile_if_stale) needs this distinction:
+    # RQ's own per-job timeout is scoped to execution time, not queue wait,
+    # so measuring a RUNNING row's staleness from created_at instead of
+    # started_at could mark a row FAILED before the worker even got to start
+    # it — reproduced live against this project's own single-worker setup
+    # when an earlier job was still processing ahead of it in the queue.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -1,4 +1,5 @@
 import re
+import warnings
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -6,6 +7,36 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Matches the scheme of a MySQL SQLAlchemy URL, with or without a DB-API
 # driver suffix (e.g. "mysql://", "mysql+pymysql://", "mysql+aiomysql://").
 _MYSQL_SCHEME_RE = re.compile(r"^mysql(\+\w+)?://")
+
+# Hard product ceilings, not just defaults — a normal research request must
+# never be able to run longer than this, full stop (see
+# Settings.RESEARCH_JOB_TIMEOUT_SECONDS/RESEARCH_TIME_BUDGET_SECONDS below).
+# Deliberately plain module constants, not themselves Settings fields:
+# both this project's local .env and (almost certainly, since it was set up
+# the same way) Railway's production environment variables still carry the
+# old pre-120s-budget values (RESEARCH_JOB_TIMEOUT_SECONDS=1800,
+# LLM_REQUEST_TIMEOUT_SECONDS=60 — confirmed present in backend/.env).
+# Reading Settings fields directly (unclamped) would silently let that
+# stale environment configuration reintroduce the exact unbounded-runtime
+# bug this pass exists to fix, on a project where updating a real deployed
+# environment's variables isn't always immediate. Clamping the *validated*
+# value here (rather than failing startup with a validation error) fails
+# safe: the app still boots and honors the product's hard 120s ceiling even
+# against a not-yet-updated .env/deployment, instead of crash-looping.
+_RESEARCH_JOB_TIMEOUT_HARD_MAX_SECONDS = 120
+_LLM_REQUEST_TIMEOUT_HARD_MAX_SECONDS = 30
+
+
+def _clamp(value: int, hard_max: int, field_name: str) -> int:
+    if value > hard_max:
+        warnings.warn(
+            f"Settings.{field_name}={value} exceeds the hard product ceiling of "
+            f"{hard_max}s and has been clamped to {hard_max}. Update the environment "
+            f"variable to silence this warning.",
+            stacklevel=2,
+        )
+        return hard_max
+    return value
 
 
 class Settings(BaseSettings):
@@ -23,7 +54,18 @@ class Settings(BaseSettings):
 
     # ---- LLM Providers ----
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    # llama-3.3-70b-versatile (the previous default) has been retired from
+    # Groq's catalog — verified live against this project's own API key:
+    # every call returned a real 404 "model_not_found", not a 429/quota
+    # error, confirming (per this task's explicit requirement to check
+    # independently rather than assume) that Groq quota exhaustion was NOT
+    # what crashed the worker; this was a separate, pre-existing config bug
+    # that silently wasted Groq's slot in the fallback chain on every run
+    # (fails fast, ~instant, so not itself a source of hangs, but Groq was
+    # never actually usable). openai/gpt-oss-120b is Groq's current
+    # comparable flagship general-purpose chat model and is confirmed
+    # working against this key.
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     GEMINI_API_KEY: str
     GEMINI_MODEL: str = "gemini-2.5-flash"
@@ -48,7 +90,29 @@ class Settings(BaseSettings):
     # Reproduced live: a Groq call hung >12 minutes with zero response,
     # blocking the whole research pipeline. Applied to every provider's
     # HTTP client at construction time.
-    LLM_REQUEST_TIMEOUT_SECONDS: int = 60
+    #
+    # Lowered from 60s to 20s as part of the 120s total research budget
+    # (see RESEARCH_TIME_BUDGET_SECONDS below): InferenceEngine tries its
+    # candidates sequentially on failure (groq -> mistral -> gemini in
+    # production), so a single generate() call's worst case is roughly
+    # num_candidates * this timeout before it gives up entirely. At the old
+    # 60s default that worst case alone (up to 180s for three cloud
+    # providers all hanging to their timeout) already exceeded the whole
+    # research budget on ONE of several LLM calls a run makes. 20s is still
+    # generous for Groq/Gemini/Mistral's typical multi-second response time.
+    LLM_REQUEST_TIMEOUT_SECONDS: int = 20
+
+    @field_validator("LLM_REQUEST_TIMEOUT_SECONDS")
+    @classmethod
+    def _cap_llm_request_timeout(cls, v: int) -> int:
+        return _clamp(v, _LLM_REQUEST_TIMEOUT_HARD_MAX_SECONDS, "LLM_REQUEST_TIMEOUT_SECONDS")
+
+    # Tavily has no default timeout applied by this codebase before now —
+    # its SDK's own default is 60s. search_agent.search() calls it once per
+    # generated query (3, sequentially), so an unbounded/slow Tavily
+    # response could alone consume more than the entire 120s research
+    # budget. Passed explicitly to TavilyClient.search(timeout=...).
+    SEARCH_REQUEST_TIMEOUT_SECONDS: int = 15
     # Ollama runs inference locally on CPU, which is legitimately much
     # slower than a cloud API call for the same prompt length — gets its
     # own, longer timeout rather than sharing the cloud providers' budget.
@@ -99,14 +163,83 @@ class Settings(BaseSettings):
     # ---- Redis / Task Queue ----
     REDIS_URL: str = "redis://localhost:6380/0"
     RESEARCH_QUEUE_NAME: str = "research"
-    # RQ's own default job timeout is 180s (rq.queue.Queue.DEFAULT_TIMEOUT) —
-    # far too short for this pipeline, which can legitimately run 10-15+
-    # minutes across multiple nodes and up to 3 reflection iterations.
-    # Reproduced live: a real run was killed by RQ with "Task exceeded
-    # maximum timeout value (180 seconds)" mid-pipeline. Always pass this
-    # explicitly to research_queue.enqueue(..., job_timeout=...) — never
-    # rely on RQ's default for this queue.
-    RESEARCH_JOB_TIMEOUT_SECONDS: int = 1800
+    # This used to be 1800s (30 minutes), justified at the time by the
+    # reflection loop's up-to-3-iteration ceiling. That is no longer this
+    # project's target: a normal research request must complete in <=120s,
+    # and one that can't must fail cleanly rather than occupy a worker for
+    # up to half an hour. 120 is now the literal, product-required hard
+    # maximum for a research request — enforced here via RQ's own
+    # SIGALRM-based job timeout (rq.timeouts.UnixSignalDeathPenalty, real on
+    # Railway's Linux containers), which is a genuine OS-level interrupt: it
+    # fires even if a single blocking call inside a node (an LLM request, a
+    # source fetch) is still in progress, which WorkflowManager's own
+    # cooperative RESEARCH_TIME_BUDGET_SECONDS check below cannot do since
+    # it only runs between node boundaries. This is the backstop of last
+    # resort; RESEARCH_TIME_BUDGET_SECONDS is set lower so the pipeline's
+    # own graceful exit has a real chance to win first in the common case.
+    RESEARCH_JOB_TIMEOUT_SECONDS: int = 120
+
+    @field_validator("RESEARCH_JOB_TIMEOUT_SECONDS")
+    @classmethod
+    def _cap_research_job_timeout(cls, v: int) -> int:
+        return _clamp(v, _RESEARCH_JOB_TIMEOUT_HARD_MAX_SECONDS, "RESEARCH_JOB_TIMEOUT_SECONDS")
+
+    # Cooperative wall-clock budget checked by WorkflowManager between every
+    # LangGraph node (including before letting the reflection loop start
+    # another iteration) — set below RESEARCH_JOB_TIMEOUT_SECONDS so a
+    # normal run has time to exit with a clear, specific "exceeded time
+    # budget" ResearchTimeoutError and a clean database write before RQ's
+    # own harder SIGALRM deadline would otherwise fire and interrupt
+    # mid-call. Not a substitute for the RQ-level timeout above — a single
+    # node that blocks past this value in one call (e.g. every configured
+    # LLM provider hanging to its own timeout) can only be caught by that
+    # outer, OS-level deadline, not by a check that only runs between nodes.
+    RESEARCH_TIME_BUDGET_SECONDS: int = 100
+
+    @field_validator("RESEARCH_TIME_BUDGET_SECONDS")
+    @classmethod
+    def _cap_research_time_budget(cls, v: int, info) -> int:
+        # Must stay strictly below the (already-clamped) RQ job timeout, or
+        # the cooperative check could never win the race against RQ's own
+        # SIGALRM — leaving every over-budget run to end with RQ's generic
+        # "Task exceeded maximum timeout value" instead of this project's
+        # own clearer ResearchTimeoutError message.
+        job_timeout = info.data.get("RESEARCH_JOB_TIMEOUT_SECONDS", _RESEARCH_JOB_TIMEOUT_HARD_MAX_SECONDS)
+        return _clamp(v, max(1, job_timeout - 10), "RESEARCH_TIME_BUDGET_SECONDS")
+
+    # WorkflowManager's reflection-loop ceiling (previously hardcoded to 3 in
+    # WorkflowManager.__init__, with no awareness of the time budget at all).
+    # Reproduced live, repeatedly, against this project's own 100s budget:
+    # the reflection agent asks for a second iteration on the large majority
+    # of queries tried during this pass — including trivial ones ("What is
+    # the capital of Japan?") — and one full additional iteration
+    # (retrieval -> writer -> verification -> rewrite -> citation ->
+    # reflection again) reliably costs another 40-70s on top of an already
+    # 70-90s first pass, blowing the 120s hard maximum on what should be the
+    # common case, not the exception. 1 means the workflow always completes
+    # in a single pass regardless of the reflection agent's verdict —
+    # should_continue() forces approval once iteration >= max_iterations —
+    # while still computing and storing that verdict (visible in the
+    # returned quality_report/reflection data) rather than hiding it. This
+    # is a real, deliberate quality/reliability tradeoff, not a
+    # side-effect: a normal request reliably finishing once beats an
+    # unreliable chance at a "better" report across two passes that often
+    # doesn't finish at all.
+    RESEARCH_MAX_ITERATIONS: int = 1
+
+    # Retrieval Node runs one embed-and-rerank cycle (including a real
+    # cross-encoder inference call) per planner-generated task — a
+    # comprehensive query can produce 9-14+ tasks with no cap before this.
+    # Reproduced live in a container reproducing the ~1GB production limit:
+    # even after every other tightening in this section, memory climbed
+    # steadily across repeated retrieval tasks and was SIGKILLed partway
+    # through task 7-8 of 9, plateauing around 91-92% just before tipping
+    # over. Capping how many of the planner's tasks actually drive a
+    # retrieval cycle bounds this node's own total work the same way
+    # MAX_SOURCES_FOR_CHUNKING bounds Chunking's — the report's structure
+    # (state["tasks"]) still reflects everything the planner produced; only
+    # how many get their own dedicated retrieval pass is capped.
+    MAX_RETRIEVAL_TASKS: int = 3
 
     # ---- Research pipeline resource limits ----
     # Chunking Node (app/workflows/nodes.py) downloads full source pages in
@@ -129,12 +262,37 @@ class Settings(BaseSettings):
     # allowance alone. Tightened further here rather than raising the
     # container's memory limit, per the fix priority this was built against:
     # reduce concurrency and source volume before reaching for more memory.
+    #
+    # Second pass (this pass): EXTRACTION_WORKERS=1 and deferred
+    # cross-encoder loading (see app/search/cross_encoder.py) still wasn't
+    # enough — SIGKILLs kept reproducing mid-Chunking at ~99% of the
+    # container limit. Tightened further again: fewer sources, less text per
+    # source, and a hard byte cap on the raw download itself (see
+    # app/search/content_extractor.py's MAX_RAW_HTML_BYTES) rather than only
+    # truncating after a potentially multi-MB page was already fully read
+    # into memory. Combined with the 120s total research budget below,
+    # which bounds how long Chunking (and every other node) is even allowed
+    # to keep accumulating memory before the run is cut off regardless.
     EXTRACTION_WORKERS: int = 1
-    MAX_SOURCES_FOR_CHUNKING: int = 5
+    MAX_SOURCES_FOR_CHUNKING: int = 2
     # Caps extracted text per source before it flows into chunking/embedding —
     # a handful of oversized pages (long-form articles, PDF-derived dumps)
     # downloaded concurrently was part of the peak-memory spike.
-    MAX_SOURCE_CONTENT_CHARS: int = 12000
+    MAX_SOURCE_CONTENT_CHARS: int = 4000
+
+    # Third pass: even after replacing sentence-transformers/torch with
+    # fastembed (ONNX Runtime) for both embedding and reranking — which cut
+    # baseline worker memory from ~74-98% of the 1GB container down to
+    # ~48%, measured live — a real container reproducing this exact limit
+    # still SIGKILLed, later in the pipeline this time (during Retrieval
+    # Node's first cross-encoder rerank call, right as its ONNX model
+    # finished loading, rather than during Chunking's embedding step as
+    # before). The cross-encoder's own model files/session initialization
+    # has a real, separate memory cost on top of the embedder's, and both
+    # models' weights are resident simultaneously by the time reranking
+    # starts. Tightened source volume further here for the same reason as
+    # the first two passes: fewer, smaller chunks resident in memory by the
+    # time the cross-encoder loads.
 
     # ---- Security ----
     # No default on purpose: every environment must set its own signing key

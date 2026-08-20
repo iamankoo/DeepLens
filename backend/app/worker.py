@@ -1,15 +1,32 @@
+import os
 import sys
 
-from rq import Worker
-from rq.registry import BaseRegistry
-from rq.timeouts import get_default_death_penalty_class
-from rq.worker import SimpleWorker
+# Must run before any transformers/torch import happens (via the
+# app.jobs.research_job import chain below, which pulls in
+# app.search.embedder's SentenceTransformer at module load time). Left at
+# their own defaults, torch/OpenBLAS/MKL each spin up a thread pool sized to
+# the host's CPU count, and tokenizers' own Rust threadpool does the same —
+# on a constrained ~1GB production container this is pure overhead (this
+# worker only ever processes one job at a time) that competes with the
+# research pipeline's own memory for stack space and buffers, on top of not
+# helping latency at this concurrency level. Setting these to single-threaded
+# doesn't change model correctness, only how many OS threads back the
+# inference call.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-from app.core.logger import logger
-from app.db.repositories.research_run_repository import research_run_repository
-from app.db.session import db_manager
-from app.jobs.research_job import handle_research_job_failure
-from app.queue.connection import redis_conn, research_queue
+from rq import Worker  # noqa: E402
+from rq.registry import BaseRegistry  # noqa: E402
+from rq.timeouts import get_default_death_penalty_class  # noqa: E402
+from rq.worker import SimpleWorker  # noqa: E402
+
+from app.core.logger import logger  # noqa: E402
+from app.db.repositories.research_run_repository import research_run_repository  # noqa: E402
+from app.db.session import db_manager  # noqa: E402
+from app.jobs.research_job import handle_research_job_failure  # noqa: E402
+from app.queue.connection import redis_conn, research_queue  # noqa: E402
 
 # Importing research_job above pulls in its full dependency chain
 # (app.agents.research_agent -> app.workflows.workflow_manager ->

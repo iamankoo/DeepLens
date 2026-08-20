@@ -13,6 +13,7 @@ Robustness:
   - reflection fail-safe prevents infinite loop
 """
 
+import gc
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -316,6 +317,17 @@ def chunking_node(state: ResearchState) -> ResearchState:
                 logger.warning(f"chunking worker failed: {e}")
     _after("parallel extraction", t0)
 
+    # Raw HTML/parsed-DOM intermediates (bytearray, decoded str, trafilatura's
+    # lxml tree) are already out of scope by the time _extract_and_chunk_source
+    # returns, but this node's own peak-memory window is exactly the one that
+    # gets the production worker SIGKILLed (see Settings' "Research pipeline
+    # resource limits" docstring) — an explicit collect() here reclaims any
+    # reference cycles (lxml/trafilatura's C-extension objects are a known
+    # source of these) immediately rather than waiting for Python's normal
+    # generational GC to get around to it while chunking's own next phase
+    # (embedding) is starting to allocate.
+    gc.collect()
+
     logger.debug("raw chunks collected", extra={"count": len(all_raw_chunks)})
 
     if not all_raw_chunks:
@@ -332,6 +344,8 @@ def chunking_node(state: ResearchState) -> ResearchState:
         logger.error(f"embedding chunks failed: {e}")
         embedded_chunks = all_raw_chunks  # keep without embeddings; retriever guards NoneType
     _after("chunk_embedder.embed()", t0)
+
+    gc.collect()
 
     state["chunk_pool"] = embedded_chunks
     logger.debug("chunk pool built", extra={"size": len(state["chunk_pool"])})
@@ -366,6 +380,13 @@ def retrieval_node(state: ResearchState) -> ResearchState:
             if info and info.strip():
                 queries.append(f"Missing details on: {info}")
 
+    if len(queries) > settings.MAX_RETRIEVAL_TASKS:
+        logger.debug(
+            "retrieval queries capped",
+            extra={"available": len(queries), "cap": settings.MAX_RETRIEVAL_TASKS},
+        )
+        queries = queries[: settings.MAX_RETRIEVAL_TASKS]
+
     logger.debug("retrieval queries", extra={"count": len(queries)})
 
     structured_context = []
@@ -377,7 +398,7 @@ def retrieval_node(state: ResearchState) -> ResearchState:
         t0 = _before(f"semantic_retriever.retrieve(task {task_idx})")
         try:
             retrieved_chunks = semantic_retriever.retrieve(
-                query=query, chunks=chunk_pool, top_k=15,
+                query=query, chunks=chunk_pool, top_k=8,
             )
         except Exception as e:
             logger.warning(f"semantic_retriever.retrieve() failed: {e}")
@@ -429,6 +450,15 @@ def retrieval_node(state: ResearchState) -> ResearchState:
 
     state["context"] = "".join(structured_context)
     logger.debug("context built", extra={"chars": len(state["context"])})
+
+    # Nothing downstream (writer/verification/rewrite/citation) uses the
+    # cross-encoder — freeing its resident ONNX session here gives that
+    # memory back before citation_node's own batch paragraph-embedding
+    # call, which was independently OOM-SIGKILLed in a 1GB-limited
+    # container with both models still resident from earlier in this same
+    # run (see CrossEncoderRanker.unload()'s docstring).
+    cross_encoder.unload()
+    gc.collect()
 
     _state_snapshot(state)
     _end("Retrieval Node", t_node)

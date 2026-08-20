@@ -9,7 +9,11 @@ from app.core.logger import logger
 class ContentExtractor:
 
     # Hard timeout: if a page doesn't respond in this many seconds, skip it.
-    FETCH_TIMEOUT = 10
+    # Also bounds Chunking Node's worst case against the 120s total research
+    # budget (Settings.RESEARCH_TIME_BUDGET_SECONDS) — with
+    # EXTRACTION_WORKERS=1 (sequential) and MAX_SOURCES_FOR_CHUNKING=3, the
+    # worst case for this phase is 3 * FETCH_TIMEOUT.
+    FETCH_TIMEOUT = 8
 
     # Defensive cap on raw HTML read into memory per source, independent of
     # the (post-extraction) MAX_SOURCE_CONTENT_CHARS setting — a handful of
@@ -17,7 +21,11 @@ class ContentExtractor:
     # concurrently by Chunking Node's thread pool was part of a real
     # production OOM (worker work-horse SIGKILLed mid-Chunking). Streamed so
     # the download itself is bounded, not just truncated after the fact.
-    MAX_RAW_HTML_BYTES = 3_000_000
+    # Lowered from 3MB to 1.5MB after SIGKILLs kept reproducing mid-Chunking
+    # even with EXTRACTION_WORKERS=1 and deferred cross-encoder loading —
+    # trafilatura/lxml's parse tree for a page this size is itself a multiple
+    # of the input size, not just the raw bytes held in `raw_bytes`/`raw_html`.
+    MAX_RAW_HTML_BYTES = 1_500_000
 
     def extract(
         self,

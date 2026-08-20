@@ -1,6 +1,7 @@
+from tavily import TavilyClient
+
 from app.core.config import settings
 from app.providers.search.base import BaseSearchProvider
-from tavily import TavilyClient
 
 
 class TavilyProvider(BaseSearchProvider):
@@ -9,12 +10,17 @@ class TavilyProvider(BaseSearchProvider):
 
         self.client = TavilyClient(api_key=settings.TAVILY_API_KEY)
 
-    def search(self, query: str):
+    def search(self, query: str, timeout: float | None = None):
 
+        # TavilyClient's own default (60s) is unbounded relative to the
+        # research pipeline's 120s total budget — search_agent.search()
+        # calls this up to 3 times sequentially, so an unbounded/slow
+        # response here could alone exceed the whole run's time budget.
         response = self.client.search(
             query=query,
             search_depth="basic",
             max_results=3,
+            timeout=timeout if timeout is not None else settings.SEARCH_REQUEST_TIMEOUT_SECONDS,
         )
 
         results = []

@@ -1,8 +1,17 @@
 import time
 
-from sentence_transformers import CrossEncoder
+from fastembed.rerank.cross_encoder import TextCrossEncoder
 
 from app.core.logger import logger
+
+# Xenova/ms-marco-MiniLM-L-6-v2 is an ONNX export of the same
+# cross-encoder/ms-marco-MiniLM-L-6-v2 weights this project used via
+# sentence-transformers before — same ranking model, no accuracy tradeoff —
+# swapped for the reason documented in
+# app/memory/providers/sentence_transformer_provider.py: fastembed
+# (ONNX Runtime) doesn't need torch, and torch's own baseline import cost
+# was a direct, measured contributor to the production worker OOM.
+_MODEL_NAME = "Xenova/ms-marco-MiniLM-L-6-v2"
 
 
 class CrossEncoderRanker:
@@ -25,11 +34,11 @@ class CrossEncoderRanker:
         # embedder (app/search/embedder.py), which chunking_node's own
         # immediate next step does need.
         if self._model is None:
-            logger.debug("loading cross-encoder model", extra={"model": "cross-encoder/ms-marco-MiniLM-L-6-v2"})
+            logger.debug("loading cross-encoder model", extra={"model": _MODEL_NAME})
             t0 = time.perf_counter()
-            self._model = CrossEncoder(
-                "cross-encoder/ms-marco-MiniLM-L-6-v2"
-            )
+            # threads=1: see the identical rationale in
+            # app/memory/providers/sentence_transformer_provider.py.
+            self._model = TextCrossEncoder(_MODEL_NAME, threads=1)
             elapsed = time.perf_counter() - t0
             logger.debug("cross-encoder model loaded", extra={"elapsed_s": round(elapsed, 2)})
         return self._model
@@ -46,12 +55,9 @@ class CrossEncoderRanker:
         t0 = time.perf_counter()
 
         try:
-            pairs = [
-                (query, chunk.text)
-                for chunk in chunks
-            ]
+            documents = [chunk.text for chunk in chunks]
 
-            scores = self.model.predict(pairs)
+            scores = list(self.model.rerank(query, documents))
 
         except Exception as e:
             logger.error("error during cross-encoder predict", extra={"error": str(e)})
@@ -69,6 +75,19 @@ class CrossEncoderRanker:
         logger.debug("reranked chunks", extra={"chunk_count": len(chunks), "elapsed_s": round(elapsed, 2)})
 
         return ranked
+
+    def unload(self):
+        """Frees the loaded ONNX cross-encoder session. Called by
+        retrieval_node once it's done — nothing later in the same workflow
+        run (writer/verification/rewrite/citation) uses this ranker again,
+        and its resident session was a direct, measured contributor to a
+        real OOM in a 1GB-limited container: the pipeline was SIGKILLed at
+        citation_node's own batch paragraph-embedding call with memory
+        already at ~97%, immediately after retrieval_node's cross-encoder
+        calls. self.model's lazy-load property means the next research run
+        in this same worker process (a fresh job, not this one) will simply
+        reload it on first use, at the usual one-time cost."""
+        self._model = None
 
 
 cross_encoder = CrossEncoderRanker()
