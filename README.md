@@ -214,11 +214,11 @@ The app is now available at `http://localhost:3000`, with the API at `http://127
 
 ## Screenshots
 
-_Add screenshots or a short demo GIF here._
-
-| Dashboard | Research Progress | Report |
-|---|---|---|
-| _placeholder_ | _placeholder_ | _placeholder_ |
+| | |
+|---|---|
+| ![DL1](screenshots/DL1.png) | ![DL2](screenshots/DL2.png) |
+| ![DL3](screenshots/DL3.png) | ![DL4](screenshots/DL4.png) |
+| ![DL5](screenshots/DL5.png) | ![DL6](screenshots/DL6.png) |
 
 ---
 
