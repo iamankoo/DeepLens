@@ -68,7 +68,16 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     GEMINI_API_KEY: str
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    # gemini-2.5-flash (the previous default) has been retired — verified
+    # live against this project's own production deployment: every call
+    # returned a real 404 "This model models/gemini-2.5-flash is no longer
+    # available to new users", not a quota/rate-limit error. Discovered via
+    # the live production end-to-end test (Gemini is the last provider in
+    # the mandatory fallback chain, so this only surfaced when Groq was
+    # quota-exhausted and Mistral hit a transient timeout on the same
+    # request). gemini-3.6-flash is the exact replacement Gemini's own 404
+    # response names, confirmed working against this project's key.
+    GEMINI_MODEL: str = "gemini-3.6-flash"
 
     MISTRAL_API_KEY: str = ""
     MISTRAL_MODEL: str = "mistral-large-latest"
